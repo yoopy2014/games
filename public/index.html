@@ -272,10 +272,17 @@
             localPlayerMesh = createCarMesh(players[id].color);
             scene.add(localPlayerMesh);
           }
+
+          // ★ isGodの状態に合わせて最高速・加速度・表示をセット
           if (players[id].isGod) {
             myData.maxSpeed = 2.5;
             myData.accel = 0.1;
             document.getElementById('god-mode').style.display = 'block';
+          } else {
+            // 通常モードに戻す
+            myData.maxSpeed = 0.8;
+            myData.accel = 0.02;
+            document.getElementById('god-mode').style.display = 'none';
           }
         } else {
           if (!otherPlayers[id]) {
