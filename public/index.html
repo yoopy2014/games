@@ -46,10 +46,9 @@
       font-size: 18px;
       display: none;
     }
-    #admin-link {
+    .top-btn {
       position: absolute;
       top: 10px;
-      right: 10px;
       z-index: 30;
       background: rgba(0, 0, 0, 0.6);
       border: 1px solid #555;
@@ -59,10 +58,17 @@
       text-decoration: none;
       font-size: 14px;
       font-weight: bold;
+      cursor: pointer;
       transition: background 0.2s;
     }
-    #admin-link:hover {
+    .top-btn:hover {
       background: #ff0055;
+    }
+    #admin-link {
+      right: 10px;
+    }
+    #bgm-toggle {
+      right: 160px;
     }
     #countdown {
       position: absolute;
@@ -95,7 +101,14 @@
 </head>
 <body>
 
-  <a id="admin-link" href="/admin.html" target="_blank">⚙️ 管理者画面を開く</a>
+  <!-- 音声コントロール & 管理者リンク -->
+  <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
+  <a id="admin-link" class="top-btn" href="/admin.html" target="_blank">⚙️ 管理者画面</a>
+
+  <!-- BGM音源（オープンソース/パブリックドメインのレーシングBGM風楽曲） -->
+  <audio id="bgm" loop preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73180.mp3?filename=synthwave-80s-110045.mp3" type="audio/mpeg">
+  </audio>
 
   <div id="ui-container">
     <div>LAP: <span id="lap-display">1</span> / 3</div>
@@ -112,6 +125,34 @@
 
   <script>
     const socket = io();
+
+    // --- BGM 管理 ---
+    const bgm = document.getElementById('bgm');
+    bgm.volume = 0.3; // 音量を30%に設定
+    let bgmEnabled = true;
+
+    function playBGM() {
+      if (bgmEnabled && bgm.paused) {
+        bgm.play().catch(() => {});
+      }
+    }
+
+    function toggleBGM() {
+      const btn = document.getElementById('bgm-toggle');
+      if (bgmEnabled) {
+        bgmEnabled = false;
+        bgm.pause();
+        btn.innerText = "🎵 BGM: OFF";
+      } else {
+        bgmEnabled = true;
+        bgm.play().catch(() => {});
+        btn.innerText = "🎵 BGM: ON";
+      }
+    }
+
+    // ブラウザの自動再生規制対策（キーを押したらBGMスタート）
+    window.addEventListener('keydown', () => playBGM(), { once: true });
+    window.addEventListener('click', () => playBGM(), { once: true });
 
     // 1. Scene & Setup
     const scene = new THREE.Scene();
@@ -374,6 +415,7 @@
     });
 
     socket.on('startCountdown', () => {
+      playBGM(); // カウントダウン時にもBGM再生開始
       let count = 3;
       canControl = false;
       myData.speed = 0;
