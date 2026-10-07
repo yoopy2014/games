@@ -10,7 +10,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASS = process.env.ADMIN_PASS || "admin123";
 
-// public フォルダ内のファイルを配信（index.html が自動的に開かれます）
+// public フォルダ内の静的ファイル（index.html など）を配信
 app.use(express.static(path.join(__dirname, 'public')));
 
 // プレイヤー管理データ
@@ -22,7 +22,7 @@ io.on('connection', (socket) => {
   // 初期ステータス設定
   players[socket.id] = {
     id: socket.id,
-    x: 0, y: 1, z: 0,
+    x: 80, y: 0, z: 0,
     rotY: 0,
     speed: 0,
     maxSpeed: 0.8,
@@ -32,7 +32,7 @@ io.on('connection', (socket) => {
     color: '#' + Math.floor(Math.random() * 16777215).toString(16)
   };
 
-  // 全員に同期
+  // 全員に現在のプレイヤー情報を送信
   io.emit('updatePlayers', players);
 
   // プレイヤーからの操作・位置同期
@@ -40,6 +40,14 @@ io.on('connection', (socket) => {
     if (players[socket.id]) {
       Object.assign(players[socket.id], data);
       socket.broadcast.emit('playerMoved', { id: socket.id, ...data });
+    }
+  });
+
+  // 管理者コマンド：レース一斉スタート
+  socket.on('admin_start_race', (data) => {
+    if (data.pass === ADMIN_PASS) {
+      // 全クライアントにカウントダウン開始命令を通知
+      io.emit('startCountdown');
     }
   });
 
@@ -51,19 +59,15 @@ io.on('connection', (socket) => {
       players[data.targetId].isGod = true;
       io.emit('godGranted', { targetId: data.targetId });
       io.emit('updatePlayers', players);
-  // admin_start_race イベントの追加
-socket.on('admin_start_race', (data) => {
-  if (data.pass === ADMIN_PASS) {
-    // 全クライアントにカウントダウン開始命令を通知
-    io.emit('startCountdown');
-  }
-});
     }
   });
 
+  // 切断処理
   socket.on('disconnect', () => {
+    console.log(`切断: ${socket.id}`);
     delete players[socket.id];
     io.emit('playerLeft', socket.id);
+    io.emit('updatePlayers', players);
   });
 });
 
