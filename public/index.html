@@ -2,321 +2,418 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>3D Online Racing with Admin Start</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Multi-Racing Game</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body { overflow: hidden; font-family: -apple-system, sans-serif; background: #000; }
-    #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; }
-    
-    /* UIオーバーレイ */
-    #ui { position: absolute; top: 15px; left: 15px; color: #fff; z-index: 10; font-weight: bold; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; }
-    #leaderboard { position: absolute; top: 15px; right: 15px; color: #fff; z-index: 10; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; min-width: 160px; }
-    
-    /* カウントダウン表示 */
-    #countdown-overlay {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      z-index: 25; color: #ffd700; font-size: 96px; font-weight: 900;
-      text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(255,215,0,0.6);
-      pointer-events: none; text-align: center;
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+      font-family: Arial, sans-serif;
+      user-select: none;
     }
-    #status-msg { font-size: 24px; color: #fff; font-weight: bold; margin-top: 10px; }
-
-    /* 管理者パネルボタン */
-    #admin-toggle { position: absolute; bottom: 15px; right: 15px; z-index: 20; background: #e63946; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    
-    /* 管理者パネル modal */
-    #admin-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; background: #222; color: #fff; padding: 20px; border-radius: 12px; width: 340px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
-    #admin-modal input { width: 100%; padding: 8px; margin: 10px 0; background: #333; border: 1px solid #555; color: #fff; border-radius: 4px; }
-    .btn { background: #e63946; color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; font-weight: bold; }
-    .btn-start { background: #2a9d8f; font-size: 16px; padding: 12px; margin-bottom: 12px; }
-    .p-card { background: #333; padding: 8px; margin-top: 8px; border-radius: 6px; font-size: 12px; }
+    #ui-container {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+      z-index: 10;
+    }
+    #speedometer {
+      font-size: 28px;
+      color: #00ffcc;
+    }
+    #countdown {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 96px;
+      font-weight: 900;
+      color: #ff0055;
+      text-shadow: 0 0 20px #ff0055, 0 0 40px #ff0055;
+      display: none;
+      z-index: 20;
+    }
+    #goal-banner {
+      position: absolute;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 72px;
+      font-weight: 900;
+      color: #ffea00;
+      text-shadow: 0 0 30px #ffea00, 4px 4px 0px #000;
+      display: none;
+      text-align: center;
+      z-index: 20;
+    }
+    #admin-panel {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 12px;
+      z-index: 10;
+    }
+    #admin-panel input, #admin-panel button {
+      margin: 2px;
+      padding: 4px 8px;
+      background: #222;
+      border: 1px solid #555;
+      color: #fff;
+      border-radius: 4px;
+    }
+    #admin-panel button:hover {
+      background: #444;
+      cursor: pointer;
+    }
   </style>
+  <!-- Three.js & Socket.io CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-  <div id="canvas-container"></div>
-
-  <div id="ui">
-    <div id="speed">Speed: 0 km/h</div>
-    <div id="lap">Lap: 1 / 3</div>
+  <div id="ui-container">
+    <div>LAP: <span id="lap-display">1</span> / 3</div>
+    <div id="speedometer">0 km/h</div>
+    <div id="god-mode" style="color: #ffea00; display: none;">★ GOD MODE ENABLED ★</div>
   </div>
 
-  <div id="leaderboard">
-    🎯 順位表
-    <div id="rank-list"></div>
+  <div id="countdown">3</div>
+  <div id="goal-banner">GOAL!!<br><span id="goal-time" style="font-size: 32px; color: #fff;"></span></div>
+
+  <div id="admin-panel">
+    <div><b>ADMIN PANEL</b></div>
+    <input type="password" id="admin-pass" placeholder="Pass (admin123)">
+    <button onclick="adminStartRace()">レーススタート</button><br>
+    <button onclick="adminMakeGod()">自分をGOD化</button><br>
+    <button onclick="adminSetEnv('sunset')">夕焼け</button>
+    <button onclick="adminSetEnv('night')">夜空</button>
   </div>
 
-  <!-- カウントダウン ＆ 状態メッセージ -->
-  <div id="countdown-overlay">
-    <div id="count-num"></div>
-    <div id="status-msg">管理者のスタート指示を待っています...</div>
-  </div>
+  <script>
+    const socket = io();
 
-  <button id="admin-toggle" onclick="toggleAdmin()">管理者パネル</button>
+    // --- Three.js 基本セットアップ ---
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0xff7744, 0.003); // 背景フォグ
 
-  <div id="admin-modal">
-    <h3>管理者制御</h3>
-    <input type="password" id="admin-pass" placeholder="パスワード (admin123)">
-    
-    <button class="btn btn-start" onclick="startRace()">🏁 レースを一斉スタート</button>
-    
-    <h4>プレイヤー一覧</h4>
-    <div id="player-list"></div>
-    <button onclick="toggleAdmin()" style="margin-top:15px; background:#555;" class="btn">閉じる</button>
-  </div>
-
-<script>
-  const socket = io();
-
-  // 1. Three.js セットアップ
-  const container = document.getElementById('canvas-container');
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xa0a0a0);
-
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  container.appendChild(renderer.domElement);
-
-  // 照明
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(100, 200, 100);
-  scene.add(light);
-  scene.add(new THREE.AmbientLight(0x666666));
-
-  // コース
-  const groundGeo = new THREE.PlaneGeometry(300, 300);
-  const groundMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-
-  const trackGeo = new THREE.RingGeometry(60, 100, 64);
-  const trackMat = new THREE.MeshLambertMaterial({ color: 0x333333, side: THREE.DoubleSide });
-  const track = new THREE.Mesh(trackGeo, trackMat);
-  track.rotation.x = -Math.PI / 2;
-  track.position.y = 0.01;
-  scene.add(track);
-
-  // スタートライン
-  const lineGeo = new THREE.PlaneGeometry(40, 4);
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const startLine = new THREE.Mesh(lineGeo, lineMat);
-  startLine.rotation.x = -Math.PI / 2;
-  startLine.position.set(80, 0.02, 0);
-  scene.add(startLine);
-
-  function createCarMesh(color, isGod) {
-    const group = new THREE.Group();
-    const bodyGeo = new THREE.BoxGeometry(2, 1, 4);
-    const bodyMat = new THREE.MeshStandardMaterial({ 
-      color: color,
-      emissive: isGod ? 0xffd700 : 0x000000,
-      emissiveIntensity: isGod ? 0.8 : 0
-    });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.5;
-    group.add(body);
-    return group;
-  }
-
-  // ステータス管理
-  let myId = null;
-  let raceStarted = false; // スタート判定フラグ
-  const myCar = createCarMesh(0xff0000, false);
-  scene.add(myCar);
-
-  const carState = {
-    x: 80,
-    z: 0,
-    rotY: 0,
-    speed: 0,
-    maxSpeed: 1.2,
-    accel: 0.03,
-    isGod: false,
-    lap: 1,
-    passedCP: false
-  };
-
-  const otherCars = {};
-
-  // キーボード操作
-  const keys = { up: false, down: false, left: false, right: false };
-  window.addEventListener('keydown', e => {
-    if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
-    if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = true;
-    if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = true;
-    if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = true;
-  });
-  window.addEventListener('keyup', e => {
-    if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = false;
-    if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = false;
-    if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = false;
-    if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
-  });
-
-  socket.on('connect', () => { myId = socket.id; });
-
-  // プレイヤー同期
-  socket.on('updatePlayers', (players) => {
-    const pList = document.getElementById('player-list');
-    const rList = document.getElementById('rank-list');
-    pList.innerHTML = '';
-    rList.innerHTML = '';
-
-    Object.keys(players).forEach(id => {
-      const p = players[id];
-
-      if (id === myId) {
-        if (p.isGod && !carState.isGod) {
-          carState.isGod = true;
-          carState.maxSpeed = 3.5;
-          carState.accel = 0.15;
-        }
-      } else {
-        if (!otherCars[id]) {
-          otherCars[id] = createCarMesh(p.color || 0x0000ff, p.isGod);
-          scene.add(otherCars[id]);
-        }
-      }
-
-      pList.innerHTML += `
-        <div class="p-card">
-          ID: ${id.slice(0, 5)}... ${p.isGod ? '<b>[最強]</b>' : ''}<br>
-          <button class="btn" onclick="makeGod('${id}')">最強にする</button>
-        </div>`;
-
-      rList.innerHTML += `<div>${id === myId ? '★自分' : '他車'}: Lap ${p.lap || 1}</div>`;
-    });
-
-    Object.keys(otherCars).forEach(id => {
-      if (!players[id]) {
-        scene.remove(otherCars[id]);
-        delete otherCars[id];
-      }
-    });
-  });
-
-  socket.on('playerMoved', (data) => {
-    if (otherCars[data.id]) {
-      otherCars[data.id].position.set(data.x, 0, data.z);
-      otherCars[data.id].rotation.y = data.rotY;
-    }
-  });
-
-  // 管理者からのカウントダウン開始命令を受信
-  socket.on('startCountdown', () => {
-    const numEl = document.getElementById('count-num');
-    const msgEl = document.getElementById('status-msg');
-    
-    // 位置リセット
-    carState.x = 80;
-    carState.z = 0;
-    carState.rotY = 0;
-    carState.speed = 0;
-    raceStarted = false;
-
-    msgEl.innerText = "";
-    let count = 3;
-    numEl.innerText = count;
-
-    const timer = setInterval(() => {
-      count--;
-      if (count > 0) {
-        numEl.innerText = count;
-      } else if (count === 0) {
-        numEl.innerText = "GO!";
-        raceStarted = true; // 操作解禁
-      } else {
-        numEl.innerText = "";
-        clearInterval(timer);
-      }
-    }, 1000);
-  });
-
-  // メインループ
-  function animate() {
-    requestAnimationFrame(animate);
-
-    // レーススタート後のみ操作可能
-    if (raceStarted) {
-      if (keys.up) carState.speed = Math.min(carState.maxSpeed, carState.speed + carState.accel);
-      else if (keys.down) carState.speed = Math.max(-carState.maxSpeed / 2, carState.speed - carState.accel);
-      else carState.speed *= 0.95;
-
-      if (Math.abs(carState.speed) > 0.05) {
-        const dir = carState.speed > 0 ? 1 : -1;
-        if (keys.left) carState.rotY += 0.04 * dir;
-        if (keys.right) carState.rotY -= 0.04 * dir;
-      }
-
-      carState.x += Math.sin(carState.rotY) * carState.speed;
-      carState.z += Math.cos(carState.rotY) * carState.speed;
-    } else {
-      carState.speed = 0; // 開始前は強制停止
-    }
-
-    myCar.position.set(carState.x, 0, carState.z);
-    myCar.rotation.y = carState.rotY;
-
-    // 周回判定
-    if (carState.z < -70) carState.passedCP = true;
-    if (carState.z > 70 && carState.passedCP) {
-      carState.lap++;
-      carState.passedCP = false;
-      document.getElementById('lap').innerText = `Lap: ${carState.lap} / 3`;
-    }
-
-    // カメラ追従
-    const camOffset = new THREE.Vector3(
-      carState.x - Math.sin(carState.rotY) * 15,
-      8,
-      carState.z - Math.cos(carState.rotY) * 15
-    );
-    camera.position.lerp(camOffset, 0.1);
-    camera.lookAt(carState.x, 2, carState.z);
-
-    document.getElementById('speed').innerText = `Speed: ${Math.round(Math.abs(carState.speed) * 100)} km/h`;
-
-    if (Math.abs(carState.speed) > 0.01 || raceStarted) {
-      socket.emit('playerTransform', {
-        x: carState.x,
-        z: carState.z,
-        rotY: carState.rotY,
-        lap: carState.lap
-      });
-    }
-
-    renderer.render(scene, camera);
-  }
-
-  animate();
-
-  // 管理者操作
-  function toggleAdmin() {
-    const modal = document.getElementById('admin-modal');
-    modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
-  }
-
-  function startRace() {
-    const pass = document.getElementById('admin-pass').value;
-    socket.emit('admin_start_race', { pass });
-    toggleAdmin();
-  }
-
-  function makeGod(targetId) {
-    const pass = document.getElementById('admin-pass').value;
-    socket.emit('admin_make_god', { pass, targetId });
-  }
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-</script>
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    // --- ライティング & 背景環境 ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffaa44, 1.2);
+    dirLight.position.set(100, 150, 50);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.far = 500;
+    dirLight.shadow.camera.left = -200;
+    dirLight.shadow.camera.right = 200;
+    dirLight.shadow.camera.top = 200;
+    dirLight.shadow.camera.bottom = -200;
+    scene.add(dirLight);
+
+    // スカイドーム（夕焼けグラデーション背景）
+    const skyGeo = new THREE.SphereGeometry(500, 32, 15);
+    const skyMat = new THREE.MeshBasicMaterial({ color: 0xff5533, side: THREE.BackSide });
+    const skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(skyMesh);
+
+    // 星空パーティクル（夜用）
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 1000;
+    const starPos = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount * 3; i++) {
+      starPos[i] = (Math.random() - 0.5) * 800;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.8 });
+    const starParticles = new THREE.Points(starGeo, starMat);
+    scene.add(starParticles);
+
+    // --- 複雑なコースの生成（チューブカーブ） ---
+    const coursePoints = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(120, 0, 60),
+      new THREE.Vector3(180, 5, -100),  // アップダウン
+      new THREE.Vector3(80, 0, -220),
+      new THREE.Vector3(-60, -5, -200), // ヘアピン
+      new THREE.Vector3(-140, 0, -80),  // S字カーブ1
+      new THREE.Vector3(-100, 0, 40),   // S字カーブ2
+      new THREE.Vector3(-40, 0, 0)
+    ];
+    const curve = new THREE.CatmullRomCurve3(coursePoints, true);
+    
+    // アスファルト道路
+    const trackGeo = new THREE.TubeGeometry(curve, 150, 12, 16, true);
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 });
+    const trackMesh = new THREE.Mesh(trackGeo, trackMat);
+    trackMesh.scale.y = 0.05; // 扁平にして道路化
+    trackMesh.receiveShadow = true;
+    scene.add(trackMesh);
+
+    // ガードレール / 赤白縁石
+    const curbGeo = new THREE.TubeGeometry(curve, 150, 12.8, 16, true);
+    const curbMat = new THREE.MeshBasicMaterial({ color: 0xff0033, wireframe: true });
+    const curbMesh = new THREE.Mesh(curbGeo, curbMat);
+    curbMesh.scale.y = 0.06;
+    scene.add(curbMesh);
+
+    // 地面（芝生）
+    const groundGeo = new THREE.PlaneGeometry(1000, 1000);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.9 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.5;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // --- スタート/ゴールアーチ ---
+    const archGroup = new THREE.Group();
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8 });
+    const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 10), pillarMat);
+    p1.position.set(-12, 5, 0);
+    const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 10), pillarMat);
+    p2.position.set(12, 5, 0);
+    const topBar = new THREE.Mesh(new THREE.BoxGeometry(25, 1.5, 1.5), new THREE.MeshStandardMaterial({ color: 0xff0044 }));
+    topBar.position.set(0, 10, 0);
+    archGroup.add(p1, p2, topBar);
+    archGroup.position.set(0, 0, 0);
+    scene.add(archGroup);
+
+    // --- プレイヤー（車）生成処理 ---
+    const otherPlayers = {};
+    let localPlayerMesh = null;
+
+    function createCarMesh(colorHex) {
+      const carGroup = new THREE.Group();
+      // 車体
+      const bodyMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.5, roughness: 0.2 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4), bodyMat);
+      body.position.y = 0.5;
+      body.castShadow = true;
+      carGroup.add(body);
+      
+      // ルーフ
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 2), bodyMat);
+      roof.position.set(0, 1.1, -0.2);
+      carGroup.add(roof);
+
+      // タイヤ
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+      const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12);
+      const wPos = [[-1.1, 0.4, 1.2], [1.1, 0.4, 1.2], [-1.1, 0.4, -1.2], [1.1, 0.4, -1.2]];
+      wPos.forEach(p => {
+        const w = new THREE.Mesh(wheelGeo, wheelMat);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(...p);
+        carGroup.add(w);
+      });
+
+      return carGroup;
+    }
+
+    // --- 自車の物理・操作パラメーター ---
+    let myData = { x: 0, y: 0, z: 0, rotY: 0, speed: 0, maxSpeed: 0.8, accel: 0.02, lap: 1, isGod: false };
+    let canControl = true;
+    const keys = {};
+
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    // --- ゴール時・花火紙吹雪エフェクト ---
+    const fireworks = [];
+    function triggerFireworks() {
+      document.getElementById('goal-banner').style.display = 'block';
+      
+      for (let i = 0; i < 200; i++) {
+        const pGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+        const pMat = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
+        const p = new THREE.Mesh(pGeo, pMat);
+        p.position.set((Math.random() - 0.5) * 10, 5 + Math.random() * 5, (Math.random() - 0.5) * 10);
+        p.userData = {
+          vx: (Math.random() - 0.5) * 0.8,
+          vy: Math.random() * 0.8 + 0.2,
+          vz: (Math.random() - 0.5) * 0.8
+        };
+        scene.add(p);
+        fireworks.push(p);
+      }
+    }
+
+    // --- Socket.io 受信イベント群 ---
+    socket.on('updatePlayers', (players) => {
+      Object.keys(players).forEach(id => {
+        if (id === socket.id) {
+          if (!localPlayerMesh) {
+            localPlayerMesh = createCarMesh(players[id].color);
+            scene.add(localPlayerMesh);
+          }
+          if (players[id].isGod) {
+            myData.maxSpeed = 2.5;
+            myData.accel = 0.1;
+            document.getElementById('god-mode').style.display = 'block';
+          }
+        } else {
+          if (!otherPlayers[id]) {
+            otherPlayers[id] = createCarMesh(players[id].color);
+            scene.add(otherPlayers[id]);
+          }
+          otherPlayers[id].position.set(players[id].x, players[id].y, players[id].z);
+          otherPlayers[id].rotation.y = players[id].rotY;
+        }
+      });
+    });
+
+    socket.on('playerMoved', (data) => {
+      if (otherPlayers[data.id]) {
+        otherPlayers[data.id].position.set(data.x, data.y, data.z);
+        otherPlayers[data.id].rotation.y = data.rotY;
+      }
+    });
+
+    socket.on('playerLeft', (id) => {
+      if (otherPlayers[id]) {
+        scene.remove(otherPlayers[id]);
+        delete otherPlayers[id];
+      }
+    });
+
+    socket.on('startCountdown', () => {
+      let count = 3;
+      canControl = false;
+      const cdElem = document.getElementById('countdown');
+      cdElem.style.display = 'block';
+      cdElem.innerText = count;
+
+      const timer = setInterval(() => {
+        count--;
+        if (count > 0) {
+          cdElem.innerText = count;
+        } else if (count === 0) {
+          cdElem.innerText = "GO!!";
+          canControl = true;
+        } else {
+          cdElem.style.display = 'none';
+          clearInterval(timer);
+        }
+      }, 1000);
+    });
+
+    socket.on('playerFinished', (data) => {
+      triggerFireworks();
+    });
+
+    socket.on('updateEnvironment', (env) => {
+      if (env.skyType === 'sunset') {
+        skyMat.color.setHex(0xff5533);
+        scene.fog.color.setHex(0xff7744);
+        dirLight.color.setHex(0xffaa44);
+      } else if (env.skyType === 'night') {
+        skyMat.color.setHex(0x050515);
+        scene.fog.color.setHex(0x050515);
+        dirLight.color.setHex(0x555588);
+      }
+    });
+
+    // --- メインゲームループ ---
+    let lastCheckpointPass = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (canControl && localPlayerMesh) {
+        // 加速・減速
+        if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel, myData.maxSpeed);
+        else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -myData.maxSpeed * 0.4);
+        else myData.speed *= 0.96; // 摩擦減速
+
+        // ハンドル操作
+        if (keys['a'] || keys['arrowleft']) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed);
+        if (keys['d'] || keys['arrowright']) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed);
+
+        // 位置の更新
+        myData.x += Math.sin(myData.rotY) * myData.speed;
+        myData.z += Math.cos(myData.rotY) * myData.speed;
+
+        localPlayerMesh.position.set(myData.x, myData.y, myData.z);
+        localPlayerMesh.rotation.y = myData.rotY;
+
+        // サーバーへ位置送信
+        socket.emit('playerTransform', { x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY });
+
+        // スタート/ゴールライン通過判定 (原点付近)
+        const distToGoal = Math.hypot(myData.x, myData.z);
+        if (distToGoal < 15 && Date.now() - lastCheckpointPass > 5000) {
+          lastCheckpointPass = Date.now();
+          socket.emit('passCheckpoint', { checkpointId: 0 });
+        }
+
+        // UI表示の更新
+        document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
+      }
+
+      // 三人称追従カメラ
+      if (localPlayerMesh) {
+        const camOffset = new THREE.Vector3(0, 5, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
+        camera.position.copy(localPlayerMesh.position).add(camOffset);
+        camera.lookAt(localPlayerMesh.position.clone().add(new THREE.Vector3(0, 2, 0)));
+      }
+
+      // ゴール花火のアニメーション
+      fireworks.forEach((p, idx) => {
+        p.position.x += p.userData.vx;
+        p.position.y += p.userData.vy;
+        p.position.z += p.userData.vz;
+        p.userData.vy -= 0.02; // 重力
+        if (p.position.y < 0) {
+          scene.remove(p);
+          fireworks.splice(idx, 1);
+        }
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // --- 管理者パネル用関数 ---
+    function adminStartRace() {
+      const pass = document.getElementById('admin-pass').value;
+      socket.emit('admin_start_race', { pass });
+    }
+    function adminMakeGod() {
+      const pass = document.getElementById('admin-pass').value;
+      socket.emit('admin_make_god', { pass, targetId: socket.id });
+    }
+    function adminSetEnv(skyType) {
+      const pass = document.getElementById('admin-pass').value;
+      socket.emit('admin_change_env', { pass, skyType });
+    }
+
+    // リサイズ対応
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
 </body>
 </html>
