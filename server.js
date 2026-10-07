@@ -8,26 +8,18 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-const ADMIN_PASS = 'admin123'; // 管理者パスワード
+const ADMIN_PASS = 'admin123';
 const players = {};
 
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
-
-  // 新規プレイヤーの初期化
   players[socket.id] = {
-    x: 0,
-    y: 0,
-    z: 0,
-    rotY: 0,
+    x: 0, y: 0, z: 0, rotY: 0,
     color: '#' + Math.floor(Math.random() * 16777215).toString(16),
     isGod: false
   };
 
-  // 全員に現在のプレイヤー一覧を送信
   io.emit('updatePlayers', players);
 
-  // プレイヤー移動の同期
   socket.on('playerTransform', (data) => {
     if (players[socket.id]) {
       players[socket.id].x = data.x;
@@ -38,32 +30,25 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 管理者：一斉スタート
   socket.on('admin_start_race', (data) => {
-    if (data.pass === ADMIN_PASS) {
-      io.emit('startCountdown');
-    }
+    if (data.pass === ADMIN_PASS) io.emit('startCountdown');
   });
 
-  // 管理者：環境変更
   socket.on('admin_change_env', (data) => {
-    if (data.pass === ADMIN_PASS) {
-      io.emit('updateEnvironment', { skyType: data.skyType });
-    }
+    if (data.pass === ADMIN_PASS) io.emit('updateEnvironment', { skyType: data.skyType });
   });
 
-  // 管理者：特定のプレイヤーを最強（GOD MODE）にする
+  // ★ GOD MODEの切り替え（ON ⇔ OFF）
   socket.on('admin_toggle_god', (data) => {
     if (data.pass === ADMIN_PASS && players[data.targetId]) {
+      // isGod の true/false を反転
       players[data.targetId].isGod = !players[data.targetId].isGod;
-      // 全員に最新のステータスを再送して即時適用
+      // 変更結果を全員（クライアント側）へ即時通知
       io.emit('updatePlayers', players);
     }
   });
 
-  // 切断処理
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
     delete players[socket.id];
     io.emit('playerLeft', socket.id);
     io.emit('updatePlayers', players);
@@ -71,6 +56,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
