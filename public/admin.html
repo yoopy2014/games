@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>レース管理者ダッシュボード</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1a1a1a;
+      color: #fff;
+      padding: 20px;
+    }
+    .card {
+      background: #2a2a2a;
+      padding: 15px;
+      border-radius: 8px;
+      max-width: 400px;
+      margin-bottom: 20px;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #333;
+      color: #fff;
+      box-sizing: border-box;
+    }
+    button {
+      background: #ff0055;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #ff2277;
+    }
+    .btn-env {
+      background: #4444ff;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <h1>レース管理者ダッシュボード</h1>
+
+  <div class="card">
+    <label>管理者パスワード:</label>
+    <input type="password" id="pass" value="admin123">
+  </div>
+
+  <div class="card">
+    <h3>レースコントロール</h3>
+    <button onclick="startRace()">レース一斉スタート (カウントダウン開始)</button>
+  </div>
+
+  <div class="card">
+    <h3>環境・背景変更</h3>
+    <button class="btn-env" onclick="setEnv('sunset')">夕焼けモード</button>
+    <button class="btn-env" onclick="setEnv('night')">夜空モード</button>
+  </div>
+
+  <script>
+    // 自動的にRender上の現在ドメインへ接続
+    const socket = io();
+
+    function startRace() {
+      const pass = document.getElementById('pass').value;
+      socket.emit('admin_start_race', { pass });
+    }
+
+    function setEnv(skyType) {
+      const pass = document.getElementById('pass').value;
+      socket.emit('admin_change_env', { pass, skyType });
+    }
+  </script>
+</body>
+</html>
