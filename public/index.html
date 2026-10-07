@@ -147,7 +147,7 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // --- コース作成 (CatmullRomCurve3) ---
+    // コース作成
     const coursePoints = [
       new THREE.Vector3(0, 0, -20),
       new THREE.Vector3(0, 0, 100),
@@ -166,7 +166,7 @@
     trackMesh.receiveShadow = true;
     scene.add(trackMesh);
 
-    // --- ゴールゲート & チェッカーライン ---
+    // ゴールゲート
     function createFinishLine() {
       const group = new THREE.Group();
       const canvas = document.createElement('canvas');
@@ -211,7 +211,7 @@
     checkpointMesh.position.set(80, 5, -220);
     scene.add(checkpointMesh);
 
-    // --- アイテムボックスの設置 ---
+    // アイテムボックス
     const itemBoxes = [];
     const itemBoxPositions = [
       new THREE.Vector3(0, 1.5, 70),
@@ -229,18 +229,18 @@
       itemBoxes.push({ mesh: box, active: true, respawnTimer: 0 });
     });
 
-    // 妨害バナナ（障害物）のリスト
+    // バナナ管理
     const bananas = [];
-    function spawnBanana(x, z) {
+    function spawnBananaMesh(id, x, z) {
       const bGeo = new THREE.CylinderGeometry(0.8, 1.2, 0.4, 8);
       const bMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
       const banana = new THREE.Mesh(bGeo, bMat);
       banana.position.set(x, 0.2, z);
       scene.add(banana);
-      bananas.push(banana);
+      bananas.push({ id: id, mesh: banana });
     }
 
-    // --- 車両メッシュ生成 ---
+    // 車両メッシュ
     function createCarMesh(colorHex) {
       const carGroup = new THREE.Group();
       const bodyMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.5, roughness: 0.2 });
@@ -274,8 +274,8 @@
       speed: 0, maxSpeed: 0.8, accel: 0.02, 
       lap: 1, 
       hasPassedCP: false,
-      currentItem: null, // 持っているアイテム ('boost' または 'banana')
-      spinTimer: 0        // スピン（妨害ヒット）タイマー
+      currentItem: null,
+      spinTimer: 0
     };
     const keys = {};
 
@@ -285,18 +285,15 @@
     });
     window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
 
-    // アイテム使用関数
     function useItem() {
       if (!myData.currentItem || myData.spinTimer > 0) return;
 
       if (myData.currentItem === 'boost') {
-        // 加速アイテム（ダッシュ）
         myData.speed = myData.maxSpeed * 1.8;
       } else if (myData.currentItem === 'banana') {
-        // 妨害アイテム（自分の真裏にバナナ設置）
         const backX = myData.x - Math.sin(myData.rotY) * 4;
         const backZ = myData.z - Math.cos(myData.rotY) * 4;
-        spawnBanana(backX, backZ);
+        socket.emit('spawn_banana', { x: backX, z: backZ });
       }
 
       myData.currentItem = null;
@@ -360,6 +357,22 @@
       }
     });
 
+    socket.on('banana_spawned', (data) => {
+      spawnBananaMesh(data.id, data.x, data.z);
+    });
+
+    socket.on('banana_removed', (bananaId) => {
+      const idx = bananas.findIndex(b => b.id === bananaId);
+      if (idx !== -1) {
+        scene.remove(bananas[idx].mesh);
+        bananas.splice(idx, 1);
+      }
+    });
+
+    socket.on('initBananas', (serverBananas) => {
+      serverBananas.forEach(b => spawnBananaMesh(b.id, b.x, b.z));
+    });
+
     socket.on('startCountdown', () => {
       let count = 3;
       canControl = false;
@@ -395,11 +408,10 @@
       }
     });
 
-    // --- メイン描画・更新ループ ---
+    // 描画ループ
     function animate() {
       requestAnimationFrame(animate);
 
-      // アイテムボックスの回転と復活タイマー
       itemBoxes.forEach(b => {
         if (b.active) {
           b.mesh.rotation.y += 0.03;
@@ -413,19 +425,13 @@
       });
 
       if (canControl && localPlayerMesh) {
-        
-        // スピン妨害（バナナに当たった場合）の処理
         if (myData.spinTimer > 0) {
           myData.spinTimer--;
-          myData.rotY += 0.3; // クラッシュ演出（高速スピン）
+          myData.rotY += 0.3;
           myData.speed *= 0.8;
         } else {
-          // --- 道路判定（オンロード / オフロード減速） ---
+          // オフロード判定
           const myPos = new THREE.Vector3(myData.x, 0, myData.z);
-          // 曲線上の最寄りの点を取得
-          const closestPoint = curve.getPointAt(curve.getUtoTmapping(0, 0));
-          
-          // サンプル点から最も近いコース上の距離を計算
           let minDist = 999;
           for (let i = 0; i <= 100; i++) {
             const p = curve.getPoint(i / 100);
@@ -433,38 +439,34 @@
             if (d < minDist) minDist = d;
           }
 
-          // コース幅（チューブ半径 12 相当）を超えると減速
           let currentMaxSpeed = myData.maxSpeed;
           if (minDist > 14) {
-            currentMaxSpeed = myData.maxSpeed * 0.35; // 道路外で速度を最大約1/3に低下
+            currentMaxSpeed = myData.maxSpeed * 0.35;
             document.getElementById('offroad-warning').style.display = 'block';
           } else {
             document.getElementById('offroad-warning').style.display = 'none';
           }
 
-          // アクセル・ブレーキ
           if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel, currentMaxSpeed);
           else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -currentMaxSpeed * 0.4);
           else myData.speed *= 0.96;
 
-          // ハンドル操作
           if (keys['a'] || keys['arrowleft']) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed);
           if (keys['d'] || keys['arrowright']) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed);
         }
 
-        // 位置の更新
         myData.x += Math.sin(myData.rotY) * myData.speed;
         myData.z += Math.cos(myData.rotY) * myData.speed;
 
         localPlayerMesh.position.set(myData.x, myData.y, myData.z);
         localPlayerMesh.rotation.y = myData.rotY;
 
-        // --- アイテムボックス取得判定 ---
+        // アイテム取得
         itemBoxes.forEach(b => {
           if (b.active && Math.hypot(myData.x - b.mesh.position.x, myData.z - b.mesh.position.z) < 3.5) {
             b.active = false;
             b.mesh.visible = false;
-            b.respawnTimer = 300; // 5秒後に復活
+            b.respawnTimer = 300;
 
             if (!myData.currentItem) {
               const items = ['boost', 'banana'];
@@ -475,16 +477,15 @@
           }
         });
 
-        // --- 妨害バナナ判定 ---
-        bananas.forEach((b, idx) => {
-          if (Math.hypot(myData.x - b.position.x, myData.z - b.position.z) < 2.2) {
-            myData.spinTimer = 30; // 約0.5秒スピン＆失速
-            scene.remove(b);
-            bananas.splice(idx, 1);
+        // バナナHit判定
+        bananas.forEach((b) => {
+          if (Math.hypot(myData.x - b.mesh.position.x, myData.z - b.mesh.position.z) < 2.2) {
+            myData.spinTimer = 30;
+            socket.emit('remove_banana', b.id);
           }
         });
 
-        // --- ラップ & チェックポイント判定 ---
+        // ラップ判定
         const distCP = Math.hypot(myData.x - 80, myData.z - (-220));
         if (distCP < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
@@ -509,14 +510,12 @@
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
 
-      // カメラ追従
       if (localPlayerMesh) {
         const camOffset = new THREE.Vector3(0, 4, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
         camera.position.copy(localPlayerMesh.position).add(camOffset);
         camera.lookAt(localPlayerMesh.position.clone().add(new THREE.Vector3(0, 1.5, 10).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY)));
       }
 
-      // 花火
       fireworks.forEach((p, idx) => {
         p.position.x += p.userData.vx;
         p.position.y += p.userData.vy;
