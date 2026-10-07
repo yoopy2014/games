@@ -3,697 +3,261 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>3D Multiplayer Racing & Admin System</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <title>3D Online Racing</title>
   <style>
-    body {
-      touch-action: manipulation;
-      user-select: none;
-      -webkit-user-select: none;
-      overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    .hud-glass {
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .god-glow {
-      box-shadow: 0 0 25px #f59e0b, 0 0 50px #ef4444;
-      animation: pulseGlow 1.5s infinite alternate;
-    }
-    @keyframes pulseGlow {
-      from { box-shadow: 0 0 15px #f59e0b; }
-      to { box-shadow: 0 0 35px #ef4444, 0 0 60px #8b5cf6; }
-    }
-    .t-btn {
-      touch-action: none;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { overflow: hidden; font-family: -apple-system, sans-serif; background: #000; }
+    #canvas-container { width: 100vw; height: 100vh; position: absolute; top:0; left:0; }
+    
+    /* UIオーバーレイ */
+    #ui { position: absolute; top: 15px; left: 15px; color: #fff; z-index: 10; font-weight: bold; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; }
+    #leaderboard { position: absolute; top: 15px; right: 15px; color: #fff; z-index: 10; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; min-width: 150px; }
+    
+    /* 管理者パネル切り替えボタン */
+    #admin-toggle { position: absolute; bottom: 15px; right: 15px; z-index: 20; background: #e63946; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    
+    /* 管理者パネル modal */
+    #admin-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; background: #222; color: #fff; padding: 20px; border-radius: 12px; width: 320px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+    #admin-modal input { width: 100%; padding: 8px; margin: 10px 0; background: #333; border: 1px solid #555; color: #fff; border-radius: 4px; }
+    .p-btn { background: #e63946; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; }
+    .p-card { background: #333; padding: 8px; margin-top: 8px; border-radius: 6px; font-size: 12px; }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
-<body class="bg-slate-950 text-white w-screen h-screen m-0 p-0 overflow-hidden">
+<body>
 
-  <div id="game-container" class="relative w-full h-full">
-    <!-- 3D Canvas Context -->
-    <canvas id="three-canvas" class="w-full h-full block"></canvas>
+  <div id="canvas-container"></div>
 
-    <!-- Overlay HUD: Game Stats -->
-    <div class="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none z-10">
-      <div class="hud-glass p-4 rounded-xl flex items-center gap-4 text-sm font-bold shadow-2xl">
-        <div class="flex flex-col">
-          <span class="text-xs text-slate-400 uppercase tracking-wider">SPEED</span>
-          <span id="hud-speed" class="text-3xl text-cyan-400 font-mono">0 <span class="text-xs font-normal">KM/H</span></span>
-        </div>
-        <div class="w-px h-10 bg-slate-700"></div>
-        <div class="flex flex-col">
-          <span class="text-xs text-slate-400 uppercase tracking-wider">LAP</span>
-          <span id="hud-lap" class="text-2xl text-amber-400 font-mono">1 / 3</span>
-        </div>
-        <div class="w-px h-10 bg-slate-700"></div>
-        <div class="flex flex-col">
-          <span class="text-xs text-slate-400 uppercase tracking-wider">POSITION</span>
-          <span id="hud-pos" class="text-2xl text-emerald-400 font-mono">1st</span>
-        </div>
-      </div>
-
-      <!-- Key notification for iPad keyboard -->
-      <div id="keyboard-hint" class="hud-glass px-3 py-1.5 rounded-lg text-xs text-slate-300 flex items-center gap-2 w-fit">
-        <span class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded text-amber-300 font-mono">iPad Keyboard</span>
-        <span>WASD or Arrow Keys active</span>
-      </div>
-    </div>
-
-    <!-- Top Right Controls & Room Status -->
-    <div class="absolute top-4 right-4 flex gap-2 z-10">
-      <button id="toggle-leaderboard-btn" class="hud-glass px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800/80 transition active:scale-95 flex items-center gap-2">
-        🏆 排行 / Leaderboard
-      </button>
-      <button id="toggle-admin-btn" class="bg-gradient-to-r from-red-600 to-amber-600 px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition active:scale-95 shadow-lg flex items-center gap-2">
-        ⚡ 管理者パネル (Admin)
-      </button>
-    </div>
-
-    <!-- Leaderboard Overlay Drawer -->
-    <div id="leaderboard-modal" class="hidden absolute top-16 right-4 w-80 hud-glass rounded-2xl p-4 shadow-2xl z-20 transition-all border border-slate-700">
-      <div class="flex justify-between items-center mb-3">
-        <h3 class="font-bold text-amber-400 flex items-center gap-2">
-          <span>🏆</span> リアルタイム順位表 (40人対応)
-        </h3>
-        <span id="online-count" class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">1 Connected</span>
-      </div>
-      <div id="leaderboard-list" class="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1 text-xs">
-        <!-- Rendered by JS -->
-      </div>
-    </div>
-
-    <!-- Admin Control Panel (Separate Modal / Window) -->
-    <div id="admin-panel-modal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div class="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <!-- Panel Header -->
-        <div class="bg-slate-800/90 px-6 py-4 border-b border-slate-700 flex justify-between items-center">
-          <div class="flex items-center gap-3">
-            <span class="p-2 bg-red-500/20 text-red-400 rounded-lg text-xl">⚡</span>
-            <div>
-              <h2 class="text-lg font-bold text-white">管理者アクセス コントロールパネル</h2>
-              <p class="text-xs text-slate-400">特定プレイヤーの「最強化 (God Mode)」およびステータス強制操作</p>
-            </div>
-          </div>
-          <button id="close-admin-btn" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
-        </div>
-
-        <!-- Auth Section -->
-        <div class="p-6 border-b border-slate-800 bg-slate-900/50 flex flex-wrap gap-4 items-center justify-between">
-          <div class="flex items-center gap-3 flex-1 min-w-[280px]">
-            <span class="text-sm text-slate-300 font-medium">管理者暗証番号:</span>
-            <input type="password" id="admin-pass-input" placeholder="Pass: admin123" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 flex-1">
-          </div>
-          <div class="text-xs text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/20">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Server Ready (Cap: 40 Racer Slots)
-          </div>
-        </div>
-
-        <!-- Active Racers Table -->
-        <div class="p-6 overflow-y-auto flex-1">
-          <h3 class="text-sm font-semibold text-slate-300 mb-3 flex items-center justify-between">
-            <span>出走中のプレイヤーマシン一覧</span>
-            <span class="text-xs font-normal text-slate-500">クリックして即時「最強状態」をトグル</span>
-          </h3>
-          <div class="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-            <table class="w-full text-left text-xs text-slate-300">
-              <thead class="bg-slate-800/50 text-slate-400 uppercase tracking-wider font-mono">
-                <tr>
-                  <th class="p-3">ID / Racer</th>
-                  <th class="p-3">LAP / Pos</th>
-                  <th class="p-3">Max Speed</th>
-                  <th class="p-3">Acceleration</th>
-                  <th class="p-3 text-right">God Mode Action</th>
-                </tr>
-              </thead>
-              <tbody id="admin-player-table" class="divide-y divide-slate-800/60 font-mono">
-                <!-- Dynamically populated -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Panel Footer Controls -->
-        <div class="p-4 bg-slate-900 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
-          <span>Render Server Sync Interval: <strong class="text-slate-200">30Hz</strong></span>
-          <button id="admin-grant-all-btn" class="bg-amber-600/20 border border-amber-500/40 text-amber-300 hover:bg-amber-600/30 px-3 py-1.5 rounded-lg transition font-medium">
-            全プレイヤーを通常に戻す (Reset All)
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- On-screen Controls for Touch / iPad without keyboard -->
-    <div id="touch-overlay" class="absolute bottom-6 left-0 right-0 px-6 flex justify-between items-end pointer-events-none z-10">
-      <!-- Steering Left / Right -->
-      <div class="flex gap-3 pointer-events-auto">
-        <button id="btn-left" class="t-btn w-16 h-16 rounded-full hud-glass active:bg-cyan-500/40 border border-slate-600 flex items-center justify-center text-2xl font-bold shadow-lg">
-          ←
-        </button>
-        <button id="btn-right" class="t-btn w-16 h-16 rounded-full hud-glass active:bg-cyan-500/40 border border-slate-600 flex items-center justify-center text-2xl font-bold shadow-lg">
-          →
-        </button>
-      </div>
-
-      <!-- Accel / Brake -->
-      <div class="flex gap-3 pointer-events-auto">
-        <button id="btn-brake" class="t-btn w-16 h-16 rounded-full hud-glass active:bg-red-500/40 border border-slate-600 flex items-center justify-center text-xl font-bold text-red-400 shadow-lg">
-          BRAKE
-        </button>
-        <button id="btn-accel" class="t-btn w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 active:scale-95 border border-emerald-300 flex items-center justify-center text-xl font-black text-slate-950 shadow-xl">
-          GAS
-        </button>
-      </div>
-    </div>
-
-    <!-- Race Countdown / Lap Alert Banner -->
-    <div id="banner-alert" class="hidden absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-30">
-      <h1 id="banner-text" class="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-red-500 to-purple-500 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)] tracking-wider">
-        GO!
-      </h1>
-    </div>
+  <div id="ui">
+    <div id="speed">Speed: 0 km/h</div>
+    <div id="lap">Lap: 1 / 3</div>
   </div>
 
-  <script>
-    /* =========================================================================
-       SERVER MOCK / NETWORK ENGINE ARCHITECTURE
-       Supports real Render.com Socket.IO backend connection or built-in mock loop
-       ========================================================================= */
-    const RENDER_SERVER_URL = window.location.origin; // Adapts to current deployment
-    let socket;
-    let mySocketId = "local_" + Math.random().toString(36).substring(2, 7);
+  <div id="leaderboard">
+    🎯 順位表
+    <div id="rank-list"></div>
+  </div>
 
-    // Track state of all 40 potential racers
-    let playersState = {};
+  <button id="admin-toggle" onclick="toggleAdmin()">管理者パネル</button>
 
-    // Physics & Game Constants
-    const TOTAL_LAPS = 3;
-    const DEFAULT_MAX_SPEED = 28;
-    const DEFAULT_ACCEL = 0.35;
-    const GOD_MAX_SPEED = 85;
-    const GOD_ACCEL = 1.8;
+  <div id="admin-modal">
+    <h3>管理者制御</h3>
+    <input type="password" id="admin-pass" placeholder="パスワード (admin123)">
+    <div id="player-list"></div>
+    <button onclick="toggleAdmin()" style="margin-top:15px; background:#555;" class="p-btn">閉じる</button>
+  </div>
 
-    /* =========================================================================
-       THREE.JS & CANNON.JS 3D SCENE SETUP
-       ========================================================================= */
-    let scene, camera, renderer;
-    let world; // Cannon.js world
-    let myCarMesh, myCarBody;
-    let otherCarMeshes = {};
+<script>
+  const socket = io();
 
-    // Checkpoint system coordinates (Circle Track Circuit)
-    const CHECKPOINTS = [
-      { x: 0, z: 80, radius: 20 },   // Start / Finish
-      { x: 90, z: 40, radius: 25 },  // Turn 1
-      { x: 90, z: -40, radius: 25 }, // Turn 2
-      { x: 0, z: -80, radius: 20 },  // Back straight
-      { x: -90, z: -40, radius: 25 },// Turn 3
-      { x: -90, z: 40, radius: 25 }  // Turn 4
-    ];
+  // 1. Three.js セットアップ
+  const container = document.getElementById('canvas-container');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xa0a0a0);
 
-    function init3DWorld() {
-      // 1. Scene & Camera Setup
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x090d16);
-      scene.fog = new THREE.FogExp2(0x090d16, 0.0035);
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  container.appendChild(renderer.domElement);
 
-      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+  // 照明
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(100, 200, 100);
+  scene.add(light);
+  scene.add(new THREE.AmbientLight(0x666666));
 
-      renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
+  // コース（楕円床）
+  const groundGeo = new THREE.PlaneGeometry(300, 300);
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
 
-      // 2. Cannon.js Physics
-      world = new CANNON.World();
-      world.gravity.set(0, -9.82, 0);
+  // トラックアスファルト
+  const trackGeo = new THREE.RingGeometry(60, 100, 64);
+  const trackMat = new THREE.MeshLambertMaterial({ color: 0x333333, side: THREE.DoubleSide });
+  const track = new THREE.Mesh(trackGeo, trackMat);
+  track.rotation.x = -Math.PI / 2;
+  track.position.y = 0.01;
+  scene.add(track);
 
-      // 3. Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-      scene.add(ambientLight);
-
-      const dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
-      dirLight.position.set(100, 150, 50);
-      dirLight.castShadow = true;
-      dirLight.shadow.mapSize.width = 2048;
-      dirLight.shadow.mapSize.height = 2048;
-      dirLight.shadow.camera.near = 0.5;
-      dirLight.shadow.camera.far = 400;
-      const d = 150;
-      dirLight.shadow.camera.left = -d;
-      dirLight.shadow.camera.right = d;
-      dirLight.shadow.camera.top = d;
-      dirLight.shadow.camera.bottom = -d;
-      scene.add(dirLight);
-
-      // Accent Stadium Lights
-      const spotLight = new THREE.SpotLight(0x00f0ff, 2);
-      spotLight.position.set(0, 80, 0);
-      scene.add(spotLight);
-
-      // 4. Ground / Terrain & Circuit Mesh
-      createCircuitTrack();
-
-      // 5. Initialize My Car
-      createMyCar();
-
-      // 6. Generate simulated bots if solo testing up to 10 Racers
-      initSimulatedOpponents(12);
-
-      // Event listeners
-      window.addEventListener('resize', onWindowResize);
-    }
-
-    function createCircuitTrack() {
-      // Main Ground Grass
-      const groundGeo = new THREE.PlaneGeometry(500, 500);
-      const groundMat = new THREE.MeshStandardMaterial({ color: 0x112211, roughness: 0.9 });
-      const ground = new THREE.Mesh(groundGeo, groundMat);
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      scene.add(ground);
-
-      // Cannon Physics Ground
-      const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
-      groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-      world.addBody(groundBody);
-
-      // Asphalt Track Ring Shape
-      const trackShape = new THREE.Shape();
-      // Outer curve
-      trackShape.absellipse(0, 0, 120, 100, 0, Math.PI * 2, false, 0);
-      // Inner hole
-      const holePath = new THREE.Path();
-      holePath.absellipse(0, 0, 65, 55, 0, Math.PI * 2, true, 0);
-      trackShape.holes.push(holePath);
-
-      const trackGeo = new THREE.ShapeGeometry(trackShape, 64);
-      const trackMat = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.5 });
-      const trackMesh = new THREE.Mesh(trackGeo, trackMat);
-      trackMesh.rotation.x = -Math.PI / 2;
-      trackMesh.position.y = 0.05;
-      trackMesh.receiveShadow = true;
-      scene.add(trackMesh);
-
-      // Start / Finish Line Banner
-      const lineGeo = new THREE.PlaneGeometry(30, 4);
-      const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-      const lineMesh = new THREE.Mesh(lineGeo, lineMat);
-      lineMesh.rotation.x = -Math.PI / 2;
-      lineMesh.position.set(0, 0.1, 80);
-      scene.add(lineMesh);
-
-      // Checkpoint Visual Indicators
-      CHECKPOINTS.forEach((cp, index) => {
-        const archGeo = new THREE.TorusGeometry(12, 0.4, 8, 24, Math.PI);
-        const archMat = new THREE.MeshBasicMaterial({ color: index === 0 ? 0xf59e0b : 0x06b6d4, wireframe: true });
-        const arch = new THREE.Mesh(archGeo, archMat);
-        arch.position.set(cp.x, 0, cp.z);
-        if (cp.x !== 0) arch.rotation.y = Math.PI / 2;
-        scene.add(arch);
-      });
-    }
-
-    function createCarMesh(colorHex = 0x3b82f6) {
-      const carGroup = new THREE.Group();
-
-      // Main Body
-      const bodyGeo = new THREE.BoxGeometry(2.2, 0.9, 4.4);
-      const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.6, roughness: 0.2 });
-      const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-      bodyMesh.position.y = 0.6;
-      bodyMesh.castShadow = true;
-      carGroup.add(bodyMesh);
-
-      // Cabin Glass
-      const cabinGeo = new THREE.BoxGeometry(1.6, 0.7, 2.0);
-      const cabinMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 });
-      const cabinMesh = new THREE.Mesh(cabinGeo, cabinMat);
-      cabinMesh.position.set(0, 1.2, -0.2);
-      carGroup.add(cabinMesh);
-
-      // Headlights
-      const lightGeo = new THREE.BoxGeometry(0.4, 0.2, 0.1);
-      const lightMat = new THREE.MeshBasicMaterial({ color: 0xa5f3fc });
-      const lightL = new THREE.Mesh(lightGeo, lightMat);
-      lightL.position.set(-0.7, 0.6, 2.2);
-      const lightR = lightL.clone();
-      lightR.position.x = 0.7;
-      carGroup.add(lightL);
-      carGroup.add(lightR);
-
-      // Wheels
-      const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.4, 16);
-      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-      const positions = [
-        [-1.1, 0.4, 1.3], [1.1, 0.4, 1.3],
-        [-1.1, 0.4, -1.3], [1.1, 0.4, -1.3]
-      ];
-      positions.forEach(pos => {
-        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(...pos);
-        carGroup.add(wheel);
-      });
-
-      return carGroup;
-    }
-
-    function createMyCar() {
-      myCarMesh = createCarMesh(0x3b82f6);
-      scene.add(myCarMesh);
-
-      // Cannon Physics Body
-      const boxShape = new CANNON.Box(new CANNON.Vec3(1.1, 0.5, 2.2));
-      myCarBody = new CANNON.Body({ mass: 150 });
-      myCarBody.addShape(boxShape);
-      myCarBody.position.set(0, 1, 80); // Start Line
-      world.addBody(myCarBody);
-
-      // Register local player state
-      playersState[mySocketId] = {
-        id: mySocketId,
-        name: "You (Racer 1)",
-        x: 0, y: 1, z: 80,
-        angle: 0,
-        speed: 0,
-        maxSpeed: DEFAULT_MAX_SPEED,
-        accel: DEFAULT_ACCEL,
-        lap: 1,
-        nextCp: 1,
-        isGod: false,
-        color: "#3b82f6"
-      };
-    }
-
-    const keys = { up: false, down: false, left: false, right: false };
-
-    // iPad External Keyboard Listener
-    window.addEventListener('keydown', (e) => {
-      if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
-      if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = true;
-      if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = true;
-      if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = true;
+  // 車体メッシュ生成ヘルパー
+  function createCarMesh(color, isGod) {
+    const group = new THREE.Group();
+    const bodyGeo = new THREE.BoxGeometry(2, 1, 4);
+    const bodyMat = new THREE.MeshStandardMaterial({ 
+      color: color,
+      emissive: isGod ? 0xffd700 : 0x000000,
+      emissiveIntensity: isGod ? 0.8 : 0
     });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.5; // 地面に着地
+    group.add(body);
+    return group;
+  }
 
-    window.addEventListener('keyup', (e) => {
-      if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = false;
-      if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = false;
-      if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = false;
-      if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
-    });
+  // 自車ステータス
+  let myId = null;
+  const myCar = createCarMesh(0xff0000, false);
+  scene.add(myCar);
 
-    // Touch Controls
-    function setupTouchBtn(id, keyProp) {
-      const btn = document.getElementById(id);
-      const press = (e) => { e.preventDefault(); keys[keyProp] = true; };
-      const release = (e) => { e.preventDefault(); keys[keyProp] = false; };
-      btn.addEventListener('touchstart', press);
-      btn.addEventListener('touchend', release);
-      btn.addEventListener('mousedown', press);
-      btn.addEventListener('mouseup', release);
-    }
-    setupTouchBtn('btn-accel', 'up');
-    setupTouchBtn('btn-brake', 'down');
-    setupTouchBtn('btn-left', 'left');
-    setupTouchBtn('btn-right', 'right');
+  const carState = {
+    x: 80,
+    z: 0,
+    rotY: 0,
+    speed: 0,
+    maxSpeed: 1.2,
+    accel: 0.03,
+    isGod: false,
+    lap: 1,
+    passedCP: false
+  };
 
-    function initSimulatedOpponents(count = 10) {
-      const colors = ['#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
-      for (let i = 2; i <= count; i++) {
-        const botId = "bot_" + i;
-        const colorHex = colors[i % colors.length];
-        
-        // Mesh
-        const mesh = createCarMesh(parseInt(colorHex.replace('#', '0x')));
-        scene.add(mesh);
-        otherCarMeshes[botId] = mesh;
+  const otherCars = {}; // 他プレイヤーのMeshリスト
 
-        // State
-        playersState[botId] = {
-          id: botId,
-          name: "Racer " + i,
-          x: (Math.random() - 0.5) * 20,
-          y: 0.5,
-          z: 75 - (i * 4),
-          angle: 0,
-          speed: 15 + Math.random() * 8,
-          maxSpeed: DEFAULT_MAX_SPEED - 2 + Math.random() * 4,
-          accel: DEFAULT_ACCEL,
-          lap: 1,
-          nextCp: 1,
-          isGod: false,
-          color: colorHex,
-          progressAngle: Math.random() * Math.PI * 2
-        };
-      }
-    }
+  // 入力処理（iPad キーボード対応）
+  const keys = { up: false, down: false, left: false, right: false };
+  window.addEventListener('keydown', e => {
+    if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
+    if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = true;
+    if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = true;
+    if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = true;
+  });
+  window.addEventListener('keyup', e => {
+    if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = false;
+    if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = false;
+    if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = false;
+    if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
+  });
 
-    let carSpeed = 0;
-    let carAngle = 0;
+  // ネットワーク同期
+  socket.on('connect', () => { myId = socket.id; });
 
-    function updateVehiclePhysics() {
-      const me = playersState[mySocketId];
-      if (!me) return;
+  socket.on('updatePlayers', (players) => {
+    const pList = document.getElementById('player-list');
+    const rList = document.getElementById('rank-list');
+    pList.innerHTML = '';
+    rList.innerHTML = '';
 
-      const currentMaxSpeed = me.isGod ? GOD_MAX_SPEED : me.maxSpeed;
-      const currentAccel = me.isGod ? GOD_ACCEL : me.accel;
+    Object.keys(players).forEach(id => {
+      const p = players[id];
 
-      // Acceleration / Braking
-      if (keys.up) {
-        carSpeed = Math.min(currentMaxSpeed, carSpeed + currentAccel);
-      } else if (keys.down) {
-        carSpeed = Math.max(-currentMaxSpeed * 0.4, carSpeed - currentAccel * 1.2);
+      // 管理者リスト & リーダーボード更新
+      if (id === myId) {
+        if (p.isGod && !carState.isGod) {
+          carState.isGod = true;
+          carState.maxSpeed = 3.5; // 最強スピード
+          carState.accel = 0.15;   // 超加速
+        }
       } else {
-        carSpeed *= 0.96; // Friction decay
-      }
-
-      // Steering
-      if (Math.abs(carSpeed) > 0.5) {
-        const turnSens = (carSpeed > 0 ? 1 : -1) * (me.isGod ? 0.045 : 0.035);
-        if (keys.left) carAngle += turnSens;
-        if (keys.right) carAngle -= turnSens;
-      }
-
-      // Move Physics Body
-      const forwardX = Math.sin(carAngle) * carSpeed;
-      const forwardZ = Math.cos(carAngle) * carSpeed;
-
-      myCarBody.velocity.x = forwardX;
-      myCarBody.velocity.z = forwardZ;
-
-      // Update Mesh from Body
-      myCarMesh.position.copy(myCarBody.position);
-      myCarMesh.rotation.y = carAngle;
-
-      // Sync state for local player
-      me.x = myCarMesh.position.x;
-      me.y = myCarMesh.position.y;
-      me.z = myCarMesh.position.z;
-      me.angle = carAngle;
-      me.speed = carSpeed;
-
-      // Checkpoint Progress Verification
-      const targetCp = CHECKPOINTS[me.nextCp];
-      const distToCp = Math.hypot(me.x - targetCp.x, me.z - targetCp.z);
-      if (distToCp < targetCp.radius) {
-        me.nextCp = (me.nextCp + 1) % CHECKPOINTS.length;
-        if (me.nextCp === 1) { // Completed full lap
-          me.lap++;
-          triggerBanner(`LAP ${Math.min(me.lap, TOTAL_LAPS)} / ${TOTAL_LAPS}`);
-          if (me.lap > TOTAL_LAPS) {
-            triggerBanner("🏁 FINISH!");
-          }
+        // 他人の車の生成・管理
+        if (!otherCars[id]) {
+          otherCars[id] = createCarMesh(p.color || 0x0000ff, p.isGod);
+          scene.add(otherCars[id]);
         }
       }
 
-      // Camera Follow smooth lerp
-      const camOffset = new THREE.Vector3(
-        myCarMesh.position.x - Math.sin(carAngle) * 12,
-        myCarMesh.position.y + 6,
-        myCarMesh.position.z - Math.cos(carAngle) * 12
-      );
-      camera.position.lerp(camOffset, 0.1);
-      camera.lookAt(myCarMesh.position.x, myCarMesh.position.y + 1.5, myCarMesh.position.z);
+      pList.innerHTML += `
+        <div class="p-card">
+          ID: ${id.slice(0, 5)}... ${p.isGod ? '<b>[最強]</b>' : ''}<br>
+          <button class="p-btn" onclick="makeGod('${id}')">最強にする</button>
+        </div>`;
 
-      // GOD MODE visual effects
-      if (me.isGod) {
-        myCarMesh.rotation.x = Math.sin(Date.now() * 0.01) * 0.05;
-      } else {
-        myCarMesh.rotation.x = 0;
+      rList.innerHTML += `<div>${id === myId ? '★自分' : '他車'}: Lap ${p.lap || 1}</div>`;
+    });
+
+    // 抜け出たプレイヤーの削除
+    Object.keys(otherCars).forEach(id => {
+      if (!players[id]) {
+        scene.remove(otherCars[id]);
+        delete otherCars[id];
       }
-    }
-
-    // Update Simulated AI racers along track
-    function updateOpponents() {
-      Object.keys(playersState).forEach(id => {
-        if (id === mySocketId) return;
-        const p = playersState[id];
-
-        // Simple Bot AI movement along oval
-        p.progressAngle = (p.progressAngle || 0) + (p.speed * 0.0003);
-        const radiusX = 100;
-        const radiusZ = 75;
-        p.x = Math.sin(p.progressAngle) * radiusX;
-        p.z = Math.cos(p.progressAngle) * radiusZ;
-        p.angle = p.progressAngle + Math.PI / 2;
-
-        if (otherCarMeshes[id]) {
-          otherCarMeshes[id].position.set(p.x, 0.5, p.z);
-          otherCarMeshes[id].rotation.y = p.angle;
-        }
-      });
-    }
-
-    function updateHUDAndLeaderboard() {
-      const me = playersState[mySocketId];
-      if (!me) return;
-
-      // HUD Updates
-      const kmh = Math.round(Math.abs(me.speed) * 3.6);
-      document.getElementById('hud-speed').innerHTML = `${kmh} <span class="text-xs font-normal">KM/H</span>`;
-      document.getElementById('hud-lap').innerText = `${Math.min(me.lap, TOTAL_LAPS)} / ${TOTAL_LAPS}`;
-
-      // Calculate Rank
-      const sorted = Object.values(playersState).sort((a, b) => {
-        if (b.lap !== a.lap) return b.lap - a.lap;
-        return b.nextCp - a.nextCp;
-      });
-      const myRank = sorted.findIndex(p => p.id === mySocketId) + 1;
-      const rankSuffix = ["st", "nd", "rd"][myRank - 1] || "th";
-      document.getElementById('hud-pos').innerText = `${myRank}${rankSuffix}`;
-
-      // Update Leaderboard Overlay
-      const listEl = document.getElementById('leaderboard-list');
-      listEl.innerHTML = '';
-      sorted.forEach((p, idx) => {
-        const item = document.createElement('div');
-        item.className = `flex justify-between items-center p-2 rounded-lg ${p.id === mySocketId ? 'bg-cyan-500/20 border border-cyan-500/40' : 'bg-slate-800/40'}`;
-        item.innerHTML = `
-          <div class="flex items-center gap-2">
-            <span class="font-bold font-mono w-4 text-slate-400">${idx + 1}</span>
-            <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${p.color}"></span>
-            <span class="font-medium ${p.isGod ? 'text-amber-300 font-bold' : 'text-slate-200'}">${p.name} ${p.isGod ? '⚡' : ''}</span>
-          </div>
-          <span class="text-slate-400 font-mono">Lap ${p.lap}</span>
-        `;
-        listEl.appendChild(item);
-      });
-
-      document.getElementById('online-count').innerText = `${Object.keys(playersState).length} Racers Active`;
-
-      // Update Admin Table
-      renderAdminTable();
-    }
-
-    function renderAdminTable() {
-      const tbody = document.getElementById('admin-player-table');
-      if (!tbody) return;
-      tbody.innerHTML = '';
-
-      Object.values(playersState).forEach(p => {
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-slate-900/80 transition";
-        tr.innerHTML = `
-          <td class="p-3 flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full" style="background-color: ${p.color}"></span>
-            <span class="font-bold text-white">${p.name}</span>
-            <span class="text-slate-500 text-[10px]">(${p.id})</span>
-          </td>
-          <td class="p-3 text-amber-400">Lap ${p.lap}</td>
-          <td class="p-3 ${p.isGod ? 'text-emerald-400 font-bold' : ''}">${p.isGod ? GOD_MAX_SPEED : p.maxSpeed} KM/H</td>
-          <td class="p-3">${p.isGod ? 'ULTRA (1.8)' : 'NORMAL (0.35)'}</td>
-          <td class="p-3 text-right">
-            <button onclick="toggleGodMode('${p.id}')" class="px-3 py-1 rounded text-xs font-bold transition ${p.isGod ? 'bg-red-500/20 border border-red-500 text-red-400 hover:bg-red-500/30' : 'bg-amber-500/20 border border-amber-500 text-amber-300 hover:bg-amber-500/30'}">
-              ${p.isGod ? '⚡ 最強解除 (Revoke)' : '⚡ 最強にする (Grant God)'}
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    window.toggleGodMode = function(targetId) {
-      const pass = document.getElementById('admin-pass-input').value;
-      if (pass !== "admin123") {
-        alert("認証エラー: パスワードが違います (Default: admin123)");
-        return;
-      }
-
-      if (playersState[targetId]) {
-        playersState[targetId].isGod = !playersState[targetId].isGod;
-        if (socket) {
-          socket.emit('admin_god_toggle', { pass, targetId, state: playersState[targetId].isGod });
-        }
-        triggerBanner(playersState[targetId].isGod ? "⚡ GOD MODE ACTIVATED!" : "NORMAL MODE RESTORED");
-      }
-    };
-
-    document.getElementById('admin-grant-all-btn').addEventListener('click', () => {
-      Object.keys(playersState).forEach(id => {
-        playersState[id].isGod = false;
-      });
-      renderAdminTable();
     });
+  });
 
-    function triggerBanner(text) {
-      const banner = document.getElementById('banner-alert');
-      const bannerText = document.getElementById('banner-text');
-      bannerText.innerText = text;
-      banner.classList.remove('hidden');
-      setTimeout(() => {
-        banner.classList.add('hidden');
-      }, 2000);
+  // 他プレイヤーのリアルタイム位置反映
+  socket.on('playerMoved', (data) => {
+    if (otherCars[data.id]) {
+      otherCars[data.id].position.set(data.x, 0, data.z); // Yは常に0固定（跳ね防止）
+      otherCars[data.id].rotation.y = data.rotY;
+    }
+  });
+
+  // メインループ（物理演算・カメラ追従）
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // 1. 自車の加速・ハンドル計算
+    if (keys.up) carState.speed = Math.min(carState.maxSpeed, carState.speed + carState.accel);
+    else if (keys.down) carState.speed = Math.max(-carState.maxSpeed / 2, carState.speed - carState.accel);
+    else carState.speed *= 0.95; // 減速
+
+    if (Math.abs(carState.speed) > 0.05) {
+      const dir = carState.speed > 0 ? 1 : -1;
+      if (keys.left) carState.rotY += 0.04 * dir;
+      if (keys.right) carState.rotY -= 0.04 * dir;
     }
 
-    document.getElementById('toggle-leaderboard-btn').addEventListener('click', () => {
-      document.getElementById('leaderboard-modal').classList.toggle('hidden');
-    });
+    // 座標更新
+    carState.x += Math.sin(carState.rotY) * carState.speed;
+    carState.z += Math.cos(carState.rotY) * carState.speed;
 
-    document.getElementById('toggle-admin-btn').addEventListener('click', () => {
-      document.getElementById('admin-panel-modal').classList.remove('hidden');
-    });
+    // 自車メッシュ移動（Y座標は絶対0に固定して跳ねをシャットアウト）
+    myCar.position.set(carState.x, 0, carState.z);
+    myCar.rotation.y = carState.rotY;
 
-    document.getElementById('close-admin-btn').addEventListener('click', () => {
-      document.getElementById('admin-panel-modal').classList.add('hidden');
-    });
-
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+    // 2. 周回判定（チェックポイント）
+    if (carState.z < -70) carState.passedCP = true;
+    if (carState.z > 70 && carState.passedCP) {
+      carState.lap++;
+      carState.passedCP = false;
+      document.getElementById('lap').innerText = `Lap: ${carState.lap} / 3`;
     }
 
-    function animate() {
-      requestAnimationFrame(animate);
+    // 3. カメラの追従
+    const camOffset = new THREE.Vector3(
+      carState.x - Math.sin(carState.rotY) * 15,
+      8, // 上からの視点高さ
+      carState.z - Math.cos(carState.rotY) * 15
+    );
+    camera.position.lerp(camOffset, 0.1);
+    camera.lookAt(carState.x, 2, carState.z);
 
-      // Physics World Step
-      world.step(1 / 60);
+    // 4. UI表示
+    document.getElementById('speed').innerText = `Speed: ${Math.round(Math.abs(carState.speed) * 100)} km/h`;
 
-      // Update positions
-      updateVehiclePhysics();
-      updateOpponents();
-
-      // UI updates
-      updateHUDAndLeaderboard();
-
-      // Render Three.js Scene
-      renderer.render(scene, camera);
+    // 5. サーバーへ自分の座標送信
+    if (Math.abs(carState.speed) > 0.01) {
+      socket.emit('playerTransform', {
+        x: carState.x,
+        z: carState.z,
+        rotY: carState.rotY,
+        lap: carState.lap
+      });
     }
 
-    // Initialize on window load
-    window.onload = () => {
-      init3DWorld();
-      animate();
-    };
-  </script>
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  // UI操作関係
+  function toggleAdmin() {
+    const modal = document.getElementById('admin-modal');
+    modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function makeGod(targetId) {
+    const pass = document.getElementById('admin-pass').value;
+    socket.emit('admin_make_god', { pass, targetId });
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
 </body>
 </html>
