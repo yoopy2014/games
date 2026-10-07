@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>3D Online Racing</title>
+  <title>3D Online Racing with Admin Start</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { overflow: hidden; font-family: -apple-system, sans-serif; background: #000; }
@@ -11,15 +11,25 @@
     
     /* UIオーバーレイ */
     #ui { position: absolute; top: 15px; left: 15px; color: #fff; z-index: 10; font-weight: bold; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; }
-    #leaderboard { position: absolute; top: 15px; right: 15px; color: #fff; z-index: 10; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; min-width: 150px; }
+    #leaderboard { position: absolute; top: 15px; right: 15px; color: #fff; z-index: 10; background: rgba(0,0,0,0.6); padding: 12px; border-radius: 8px; min-width: 160px; }
     
-    /* 管理者パネル切り替えボタン */
+    /* カウントダウン表示 */
+    #countdown-overlay {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 25; color: #ffd700; font-size: 96px; font-weight: 900;
+      text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(255,215,0,0.6);
+      pointer-events: none; text-align: center;
+    }
+    #status-msg { font-size: 24px; color: #fff; font-weight: bold; margin-top: 10px; }
+
+    /* 管理者パネルボタン */
     #admin-toggle { position: absolute; bottom: 15px; right: 15px; z-index: 20; background: #e63946; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     
     /* 管理者パネル modal */
-    #admin-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; background: #222; color: #fff; padding: 20px; border-radius: 12px; width: 320px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+    #admin-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; background: #222; color: #fff; padding: 20px; border-radius: 12px; width: 340px; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
     #admin-modal input { width: 100%; padding: 8px; margin: 10px 0; background: #333; border: 1px solid #555; color: #fff; border-radius: 4px; }
-    .p-btn { background: #e63946; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; }
+    .btn { background: #e63946; color: #fff; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; width: 100%; font-weight: bold; }
+    .btn-start { background: #2a9d8f; font-size: 16px; padding: 12px; margin-bottom: 12px; }
     .p-card { background: #333; padding: 8px; margin-top: 8px; border-radius: 6px; font-size: 12px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -39,13 +49,23 @@
     <div id="rank-list"></div>
   </div>
 
+  <!-- カウントダウン ＆ 状態メッセージ -->
+  <div id="countdown-overlay">
+    <div id="count-num"></div>
+    <div id="status-msg">管理者のスタート指示を待っています...</div>
+  </div>
+
   <button id="admin-toggle" onclick="toggleAdmin()">管理者パネル</button>
 
   <div id="admin-modal">
     <h3>管理者制御</h3>
     <input type="password" id="admin-pass" placeholder="パスワード (admin123)">
+    
+    <button class="btn btn-start" onclick="startRace()">🏁 レースを一斉スタート</button>
+    
+    <h4>プレイヤー一覧</h4>
     <div id="player-list"></div>
-    <button onclick="toggleAdmin()" style="margin-top:15px; background:#555;" class="p-btn">閉じる</button>
+    <button onclick="toggleAdmin()" style="margin-top:15px; background:#555;" class="btn">閉じる</button>
   </div>
 
 <script>
@@ -67,14 +87,13 @@
   scene.add(light);
   scene.add(new THREE.AmbientLight(0x666666));
 
-  // コース（楕円床）
+  // コース
   const groundGeo = new THREE.PlaneGeometry(300, 300);
   const groundMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // トラックアスファルト
   const trackGeo = new THREE.RingGeometry(60, 100, 64);
   const trackMat = new THREE.MeshLambertMaterial({ color: 0x333333, side: THREE.DoubleSide });
   const track = new THREE.Mesh(trackGeo, trackMat);
@@ -82,7 +101,14 @@
   track.position.y = 0.01;
   scene.add(track);
 
-  // 車体メッシュ生成ヘルパー
+  // スタートライン
+  const lineGeo = new THREE.PlaneGeometry(40, 4);
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const startLine = new THREE.Mesh(lineGeo, lineMat);
+  startLine.rotation.x = -Math.PI / 2;
+  startLine.position.set(80, 0.02, 0);
+  scene.add(startLine);
+
   function createCarMesh(color, isGod) {
     const group = new THREE.Group();
     const bodyGeo = new THREE.BoxGeometry(2, 1, 4);
@@ -92,13 +118,14 @@
       emissiveIntensity: isGod ? 0.8 : 0
     });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.5; // 地面に着地
+    body.position.y = 0.5;
     group.add(body);
     return group;
   }
 
-  // 自車ステータス
+  // ステータス管理
   let myId = null;
+  let raceStarted = false; // スタート判定フラグ
   const myCar = createCarMesh(0xff0000, false);
   scene.add(myCar);
 
@@ -114,9 +141,9 @@
     passedCP: false
   };
 
-  const otherCars = {}; // 他プレイヤーのMeshリスト
+  const otherCars = {};
 
-  // 入力処理（iPad キーボード対応）
+  // キーボード操作
   const keys = { up: false, down: false, left: false, right: false };
   window.addEventListener('keydown', e => {
     if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
@@ -131,9 +158,9 @@
     if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
   });
 
-  // ネットワーク同期
   socket.on('connect', () => { myId = socket.id; });
 
+  // プレイヤー同期
   socket.on('updatePlayers', (players) => {
     const pList = document.getElementById('player-list');
     const rList = document.getElementById('rank-list');
@@ -143,15 +170,13 @@
     Object.keys(players).forEach(id => {
       const p = players[id];
 
-      // 管理者リスト & リーダーボード更新
       if (id === myId) {
         if (p.isGod && !carState.isGod) {
           carState.isGod = true;
-          carState.maxSpeed = 3.5; // 最強スピード
-          carState.accel = 0.15;   // 超加速
+          carState.maxSpeed = 3.5;
+          carState.accel = 0.15;
         }
       } else {
-        // 他人の車の生成・管理
         if (!otherCars[id]) {
           otherCars[id] = createCarMesh(p.color || 0x0000ff, p.isGod);
           scene.add(otherCars[id]);
@@ -161,13 +186,12 @@
       pList.innerHTML += `
         <div class="p-card">
           ID: ${id.slice(0, 5)}... ${p.isGod ? '<b>[最強]</b>' : ''}<br>
-          <button class="p-btn" onclick="makeGod('${id}')">最強にする</button>
+          <button class="btn" onclick="makeGod('${id}')">最強にする</button>
         </div>`;
 
       rList.innerHTML += `<div>${id === myId ? '★自分' : '他車'}: Lap ${p.lap || 1}</div>`;
     });
 
-    // 抜け出たプレイヤーの削除
     Object.keys(otherCars).forEach(id => {
       if (!players[id]) {
         scene.remove(otherCars[id]);
@@ -176,38 +200,69 @@
     });
   });
 
-  // 他プレイヤーのリアルタイム位置反映
   socket.on('playerMoved', (data) => {
     if (otherCars[data.id]) {
-      otherCars[data.id].position.set(data.x, 0, data.z); // Yは常に0固定（跳ね防止）
+      otherCars[data.id].position.set(data.x, 0, data.z);
       otherCars[data.id].rotation.y = data.rotY;
     }
   });
 
-  // メインループ（物理演算・カメラ追従）
+  // 管理者からのカウントダウン開始命令を受信
+  socket.on('startCountdown', () => {
+    const numEl = document.getElementById('count-num');
+    const msgEl = document.getElementById('status-msg');
+    
+    // 位置リセット
+    carState.x = 80;
+    carState.z = 0;
+    carState.rotY = 0;
+    carState.speed = 0;
+    raceStarted = false;
+
+    msgEl.innerText = "";
+    let count = 3;
+    numEl.innerText = count;
+
+    const timer = setInterval(() => {
+      count--;
+      if (count > 0) {
+        numEl.innerText = count;
+      } else if (count === 0) {
+        numEl.innerText = "GO!";
+        raceStarted = true; // 操作解禁
+      } else {
+        numEl.innerText = "";
+        clearInterval(timer);
+      }
+    }, 1000);
+  });
+
+  // メインループ
   function animate() {
     requestAnimationFrame(animate);
 
-    // 1. 自車の加速・ハンドル計算
-    if (keys.up) carState.speed = Math.min(carState.maxSpeed, carState.speed + carState.accel);
-    else if (keys.down) carState.speed = Math.max(-carState.maxSpeed / 2, carState.speed - carState.accel);
-    else carState.speed *= 0.95; // 減速
+    // レーススタート後のみ操作可能
+    if (raceStarted) {
+      if (keys.up) carState.speed = Math.min(carState.maxSpeed, carState.speed + carState.accel);
+      else if (keys.down) carState.speed = Math.max(-carState.maxSpeed / 2, carState.speed - carState.accel);
+      else carState.speed *= 0.95;
 
-    if (Math.abs(carState.speed) > 0.05) {
-      const dir = carState.speed > 0 ? 1 : -1;
-      if (keys.left) carState.rotY += 0.04 * dir;
-      if (keys.right) carState.rotY -= 0.04 * dir;
+      if (Math.abs(carState.speed) > 0.05) {
+        const dir = carState.speed > 0 ? 1 : -1;
+        if (keys.left) carState.rotY += 0.04 * dir;
+        if (keys.right) carState.rotY -= 0.04 * dir;
+      }
+
+      carState.x += Math.sin(carState.rotY) * carState.speed;
+      carState.z += Math.cos(carState.rotY) * carState.speed;
+    } else {
+      carState.speed = 0; // 開始前は強制停止
     }
 
-    // 座標更新
-    carState.x += Math.sin(carState.rotY) * carState.speed;
-    carState.z += Math.cos(carState.rotY) * carState.speed;
-
-    // 自車メッシュ移動（Y座標は絶対0に固定して跳ねをシャットアウト）
     myCar.position.set(carState.x, 0, carState.z);
     myCar.rotation.y = carState.rotY;
 
-    // 2. 周回判定（チェックポイント）
+    // 周回判定
     if (carState.z < -70) carState.passedCP = true;
     if (carState.z > 70 && carState.passedCP) {
       carState.lap++;
@@ -215,20 +270,18 @@
       document.getElementById('lap').innerText = `Lap: ${carState.lap} / 3`;
     }
 
-    // 3. カメラの追従
+    // カメラ追従
     const camOffset = new THREE.Vector3(
       carState.x - Math.sin(carState.rotY) * 15,
-      8, // 上からの視点高さ
+      8,
       carState.z - Math.cos(carState.rotY) * 15
     );
     camera.position.lerp(camOffset, 0.1);
     camera.lookAt(carState.x, 2, carState.z);
 
-    // 4. UI表示
     document.getElementById('speed').innerText = `Speed: ${Math.round(Math.abs(carState.speed) * 100)} km/h`;
 
-    // 5. サーバーへ自分の座標送信
-    if (Math.abs(carState.speed) > 0.01) {
+    if (Math.abs(carState.speed) > 0.01 || raceStarted) {
       socket.emit('playerTransform', {
         x: carState.x,
         z: carState.z,
@@ -242,10 +295,16 @@
 
   animate();
 
-  // UI操作関係
+  // 管理者操作
   function toggleAdmin() {
     const modal = document.getElementById('admin-modal');
     modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function startRace() {
+    const pass = document.getElementById('admin-pass').value;
+    socket.emit('admin_start_race', { pass });
+    toggleAdmin();
   }
 
   function makeGod(targetId) {
