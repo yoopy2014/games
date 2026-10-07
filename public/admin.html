@@ -15,7 +15,7 @@
       background: #2a2a2a;
       padding: 15px;
       border-radius: 8px;
-      max-width: 400px;
+      max-width: 450px;
       margin-bottom: 20px;
     }
     input, button {
@@ -39,6 +39,26 @@
     .btn-env {
       background: #4444ff;
     }
+    .player-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #333;
+      padding: 8px 12px;
+      margin-top: 8px;
+      border-radius: 4px;
+    }
+    .god-badge {
+      color: #ffea00;
+      font-weight: bold;
+    }
+    .btn-god {
+      width: auto;
+      margin: 0;
+      padding: 6px 12px;
+      background: #ffaa00;
+      color: #000;
+    }
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -49,6 +69,11 @@
   <div class="card">
     <label>管理者パスワード:</label>
     <input type="password" id="pass" value="admin123">
+  </div>
+
+  <div class="card">
+    <h3>プレイヤー管理 (最強化コマンド)</h3>
+    <div id="player-list">プレイヤー読み込み中...</div>
   </div>
 
   <div class="card">
@@ -63,8 +88,44 @@
   </div>
 
   <script>
-    // 自動的にRender上の現在ドメインへ接続
     const socket = io();
+
+    // 接続中のプレイヤー一覧をリアルタイム更新
+    socket.on('updatePlayers', (players) => {
+      const listContainer = document.getElementById('player-list');
+      listContainer.innerHTML = '';
+
+      const keys = Object.keys(players);
+      if (keys.length === 0) {
+        listContainer.innerText = '接続中のプレイヤーはいません';
+        return;
+      }
+
+      keys.forEach((id) => {
+        const p = players[id];
+        const row = document.createElement('div');
+        row.className = 'player-row';
+        
+        const isSelf = id === socket.id ? ' (管理者自身)' : '';
+        const status = p.isGod ? '<span class="god-badge">★ GOD</span>' : 'NORMAL';
+
+        row.innerHTML = `
+          <div>
+            <span style="color:${p.color}; font-weight:bold;">■</span> 
+            ${id.substring(0, 6)}...${isSelf} - ${status}
+          </div>
+          <button class="btn-god" onclick="toggleGod('${id}')">
+            ${p.isGod ? '通常に戻す' : '最強にする'}
+          </button>
+        `;
+        listContainer.appendChild(row);
+      });
+    });
+
+    function toggleGod(targetId) {
+      const pass = document.getElementById('pass').value;
+      socket.emit('admin_toggle_god', { pass, targetId });
+    }
 
     function startRace() {
       const pass = document.getElementById('pass').value;
