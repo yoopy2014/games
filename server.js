@@ -51,6 +51,13 @@ io.on('connection', (socket) => {
       players[data.targetId].isGod = true;
       io.emit('godGranted', { targetId: data.targetId });
       io.emit('updatePlayers', players);
+  // admin_start_race イベントの追加
+socket.on('admin_start_race', (data) => {
+  if (data.pass === ADMIN_PASS) {
+    // 全クライアントにカウントダウン開始命令を通知
+    io.emit('startCountdown');
+  }
+});
     }
   });
 
