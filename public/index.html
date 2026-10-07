@@ -112,7 +112,7 @@
     document.body.appendChild(renderer.domElement);
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(0xffaa44, 1.2);
@@ -135,16 +135,16 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Course
+    // --- コース作成 (スタート直線 + ループ) ---
     const coursePoints = [
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(120, 0, 60),
-      new THREE.Vector3(180, 5, -100),
+      new THREE.Vector3(0, 0, -20),
+      new THREE.Vector3(0, 0, 100),
+      new THREE.Vector3(120, 0, 160),
+      new THREE.Vector3(180, 5, -50),
       new THREE.Vector3(80, 0, -220),
-      new THREE.Vector3(-60, -5, -200),
+      new THREE.Vector3(-80, -5, -200),
       new THREE.Vector3(-140, 0, -80),
-      new THREE.Vector3(-100, 0, 40),
-      new THREE.Vector3(-40, 0, 0)
+      new THREE.Vector3(-80, 0, -40)
     ];
     const curve = new THREE.CatmullRomCurve3(coursePoints, true);
     const trackGeo = new THREE.TubeGeometry(curve, 150, 12, 16, true);
@@ -154,11 +154,11 @@
     trackMesh.receiveShadow = true;
     scene.add(trackMesh);
 
-    // --- ゴールゲート & チェッカーラインの作成 ---
+    // --- ゴールゲート & チェッカーライン（道路に対して直角に配置） ---
     function createFinishLine() {
       const group = new THREE.Group();
 
-      // チェッカー柄キャンバス生成
+      // チェッカー柄キャンバス
       const canvas = document.createElement('canvas');
       canvas.width = 128; canvas.height = 128;
       const ctx = canvas.getContext('2d');
@@ -171,7 +171,7 @@
       checkerTex.repeat.set(4, 1);
 
       // 地面のゴールライン
-      const lineGeo = new THREE.PlaneGeometry(24, 4);
+      const lineGeo = new THREE.PlaneGeometry(24, 6);
       const lineMat = new THREE.MeshStandardMaterial({ map: checkerTex });
       const lineMesh = new THREE.Mesh(lineGeo, lineMat);
       lineMesh.rotation.x = -Math.PI / 2;
@@ -185,27 +185,27 @@
       const p2 = new THREE.Mesh(pillarGeo, pillarMat); p2.position.set(12, 5, 0);
       group.add(p1); group.add(p2);
 
-      // ゲート上部のチェッカー看板
+      // ゲート上部看板
       const archGeo = new THREE.BoxGeometry(25, 3, 1);
       const archMat = new THREE.MeshStandardMaterial({ map: checkerTex });
       const arch = new THREE.Mesh(archGeo, archMat);
       arch.position.set(0, 10, 0);
       group.add(arch);
 
-      // ゴールの位置（スタート地点 Z=10付近）
-      group.position.set(0, 0, 10);
+      // 道路の直線軸（Z軸方向）に合わせてゴールを設置
+      group.position.set(0, 0, 40);
       scene.add(group);
     }
     createFinishLine();
 
-    // 中間チェックポイント（リング状のマーカー）
-    const cpGeo = new THREE.TorusGeometry(10, 0.5, 8, 24);
+    // 中間チェックポイント（コース奥）
+    const cpGeo = new THREE.TorusGeometry(12, 0.6, 8, 24);
     const cpMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
     const checkpointMesh = new THREE.Mesh(cpGeo, cpMat);
-    checkpointMesh.position.set(80, 5, -220); // コース中間
+    checkpointMesh.position.set(80, 5, -220);
     scene.add(checkpointMesh);
 
-    // --- 車両メッシュ生成 (進行方向オフセット調整済み) ---
+    // --- 車両メッシュ生成 ---
     function createCarMesh(colorHex) {
       const carGroup = new THREE.Group();
       const bodyMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.5, roughness: 0.2 });
@@ -215,13 +215,13 @@
       body.position.y = 0.5;
       carGroup.add(body);
       
-      // ルーフ（前後に偏らせて車の向きを分かりやすく）
+      // ルーフ
       const roofMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
       const roof = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2), roofMat);
       roof.position.set(0, 1.1, -0.3);
       carGroup.add(roof);
 
-      // ヘッドライト（黄色で前方を強調）
+      // ヘッドライト（黄色）
       const lightGeo = new THREE.BoxGeometry(0.4, 0.2, 0.1);
       const lightMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
       const hl1 = new THREE.Mesh(lightGeo, lightMat); hl1.position.set(-0.7, 0.5, 2.01);
@@ -236,13 +236,13 @@
     let localPlayerMesh = null;
     let canControl = false;
     
-    // 車の初期スポーン位置と初期向き（Z軸正の向き＝ゴールゲートに向かう向き）
+    // スポーン位置：道路の真ん中（X=0, Z=0）、進行方向（Z正方向）を向く
     let myData = { 
-      x: 0, y: 0, z: -10, 
+      x: 0, y: 0, z: 0, 
       rotY: 0, 
       speed: 0, maxSpeed: 0.8, accel: 0.02, 
       lap: 1, 
-      hasPassedCP: false // 中間チェックポイント通過フラグ
+      hasPassedCP: false
     };
     const keys = {};
 
@@ -257,7 +257,7 @@
         const pGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
         const pMat = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
         const p = new THREE.Mesh(pGeo, pMat);
-        p.position.set((Math.random() - 0.5) * 20, 5 + Math.random() * 10, 10 + (Math.random() - 0.5) * 20);
+        p.position.set((Math.random() - 0.5) * 20, 5 + Math.random() * 10, 40 + (Math.random() - 0.5) * 20);
         p.userData = { vx: (Math.random() - 0.5) * 0.8, vy: Math.random() * 0.8 + 0.2, vz: (Math.random() - 0.5) * 0.8 };
         scene.add(p);
         fireworks.push(p);
@@ -342,24 +342,23 @@
       requestAnimationFrame(animate);
 
       if (canControl && localPlayerMesh) {
-        // アクセル・ブレーキ
+        // 前進・後退
         if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel, myData.maxSpeed);
         else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -myData.maxSpeed * 0.4);
         else myData.speed *= 0.96;
 
-        // ステアリング
+        // ハンドル操作
         if (keys['a'] || keys['arrowleft']) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed);
         if (keys['d'] || keys['arrowright']) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed);
 
-        // 位置の更新
+        // 位置と向きの移動
         myData.x += Math.sin(myData.rotY) * myData.speed;
         myData.z += Math.cos(myData.rotY) * myData.speed;
 
         localPlayerMesh.position.set(myData.x, myData.y, myData.z);
         localPlayerMesh.rotation.y = myData.rotY;
 
-        // --- 周回（LAP）& チェックポイント判定 ---
-        // 1. 中間チェックポイント判定 (80, 0, -220 付近)
+        // --- ラップ & チェックポイント判定 ---
         const distCP = Math.hypot(myData.x - 80, myData.z - (-220));
         if (distCP < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
@@ -367,9 +366,8 @@
           document.getElementById('checkpoint-msg').style.color = "#ffea00";
         }
 
-        // 2. ゴールライン通過判定 (Z=10 付近, X=-12〜12)
-        if (myData.hasPassedCP && Math.abs(myData.x) < 15 && Math.abs(myData.z - 10) < 4) {
-          myData.hasPassedCP = false; // リセット
+        if (myData.hasPassedCP && Math.abs(myData.x) < 12 && Math.abs(myData.z - 40) < 4) {
+          myData.hasPassedCP = false;
           myData.lap++;
           document.getElementById('lap-display').innerText = Math.min(myData.lap, 3);
           document.getElementById('checkpoint-msg').innerText = "NEXT: 中間チェックポイントを目指せ";
@@ -385,14 +383,14 @@
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
 
-      // カメラの追従（自機の真後ろ・少し上から追従）
+      // ★ カメラ追従：車の真後ろから道路前方を見下ろすアングル
       if (localPlayerMesh) {
-        const camOffset = new THREE.Vector3(0, 5, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
+        const camOffset = new THREE.Vector3(0, 4, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
         camera.position.copy(localPlayerMesh.position).add(camOffset);
-        camera.lookAt(localPlayerMesh.position.clone().add(new THREE.Vector3(0, 2, 0)));
+        camera.lookAt(localPlayerMesh.position.clone().add(new THREE.Vector3(0, 1.5, 10).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY)));
       }
 
-      // 花火パーティクル更新
+      // 花火パーティクル
       fireworks.forEach((p, idx) => {
         p.position.x += p.userData.vx;
         p.position.y += p.userData.vy;
