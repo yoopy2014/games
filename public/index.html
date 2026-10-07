@@ -32,6 +32,24 @@
       color: #ffcc00;
       margin-top: 5px;
     }
+    #admin-link {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 30;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #555;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    #admin-link:hover {
+      background: #ff0055;
+    }
     #countdown {
       position: absolute;
       top: 50%;
@@ -63,6 +81,8 @@
 </head>
 <body>
 
+  <a id="admin-link" href="/admin.html" target="_blank">⚙️ 管理者画面を開く</a>
+
   <div id="ui-container">
     <div>LAP: <span id="lap-display">1</span> / 3</div>
     <div id="speedometer">0 km/h</div>
@@ -74,6 +94,7 @@
   <div id="goal-banner">GOAL!!</div>
 
   <script>
+    // Render上のホストに自動接続
     const socket = io();
 
     // Three.js 基本セットアップ
@@ -86,7 +107,7 @@
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // ライティング & 背景環境
+    // ライティング
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
 
@@ -148,7 +169,7 @@
       return carGroup;
     }
 
-    // 操作権限（デフォルトは操作不可）
+    // 操作権限（カウントダウン終了まで不可）
     let canControl = false; 
     let myData = { x: 0, y: 0, z: 0, rotY: 0, speed: 0, maxSpeed: 0.8, accel: 0.02, lap: 1 };
     const keys = {};
@@ -209,11 +230,11 @@
       }
     });
 
-    // カウントダウン処理（終了するまで canControl = false）
+    // カウントダウン処理（スタート合図を受けるまで canControl = false）
     socket.on('startCountdown', () => {
       let count = 3;
-      canControl = false; // 強制フリーズ
-      myData.speed = 0;    // 速度リセット
+      canControl = false; 
+      myData.speed = 0;
 
       const statusElem = document.getElementById('status-msg');
       const cdElem = document.getElementById('countdown');
@@ -228,7 +249,7 @@
           cdElem.innerText = count;
         } else if (count === 0) {
           cdElem.innerText = "GO!!";
-          canControl = true; // 操作解禁！
+          canControl = true; // 解禁
         } else {
           cdElem.style.display = 'none';
           clearInterval(timer);
@@ -248,7 +269,7 @@
       }
     });
 
-    // ループ
+    // ループ処理
     function animate() {
       requestAnimationFrame(animate);
 
