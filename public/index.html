@@ -132,7 +132,6 @@
     .btn-secondary:hover { background: #6666ff; }
     .btn-action:disabled { background: #555; cursor: not-allowed; }
 
-    /* メンバーリスト & キック */
     .player-list-item {
       display: flex;
       justify-content: space-between;
@@ -180,7 +179,6 @@
       display: none; text-align: center; z-index: 20;
     }
 
-    /* 3Dネームタグ */
     .nametag {
       position: absolute;
       color: #ffffff;
@@ -252,7 +250,6 @@
         <button class="btn-action" style="background:#555;" onclick="startSinglePlayer()">シングルプレイ（AI対戦）</button>
       </div>
 
-      <!-- パーティー待機画面 -->
       <div id="room-lobby-area" style="display: none;">
         <h3>ROOM CODE: <span id="display-room-code" style="color:#00ffcc; font-size:24px;">----</span></h3>
         
@@ -296,7 +293,6 @@
   <script>
     const socket = io();
 
-    // URLパラメーターチェック
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const roomParam = urlParams.get('room');
@@ -305,7 +301,6 @@
       }
     });
 
-    // BGM
     const bgm = document.getElementById('bgm');
     bgm.volume = 0.3;
     let bgmEnabled = true;
@@ -320,7 +315,7 @@
       else { bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON"; }
     }
 
-    // 1. Three.js セットアップ & 高リアル描画設定
+    // 1. Three.js セットアップ
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0xff6633, 0.0025);
 
@@ -335,7 +330,6 @@
     renderer.toneMappingExposure = 1.1;
     document.body.appendChild(renderer.domElement);
 
-    // ライティング
     const ambientLight = new THREE.AmbientLight(0xffddbb, 0.7); 
     scene.add(ambientLight);
 
@@ -351,17 +345,15 @@
     dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
     scene.add(dirLight);
 
-    // Sky & Ground
     const skyGeo = new THREE.SphereGeometry(500, 32, 15);
     scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ color: 0xff4411, side: THREE.BackSide })));
 
     const groundMat = new THREE.MeshStandardMaterial({ color: 0x183a18, roughness: 0.9, metalness: 0.1 });
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), groundMat);
-    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.5;
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.01; // 地面を少し下げる
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Course
     const coursePoints = [
       new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100),
       new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 5, -50),
@@ -376,7 +368,6 @@
     trackMesh.receiveShadow = true;
     scene.add(trackMesh);
 
-    // ガードレール
     const trackRadius = 11.5;
     function createGuardrails() {
       const railSegments = 300;
@@ -427,7 +418,6 @@
     }
     createGuardrails();
 
-    // Trees
     function createTree(x, z) {
       const treeGroup = new THREE.Group();
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.9 });
@@ -450,7 +440,6 @@
       createTree(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
     }
 
-    // Finish Line
     function createFinishLine() {
       const group = new THREE.Group();
       const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
@@ -471,11 +460,9 @@
     }
     createFinishLine();
 
-    // Checkpoint
     const checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
     checkpointMesh.position.set(80, 5, -220); scene.add(checkpointMesh);
 
-    // Items & Effects
     const itemBoxes = [];
     [new THREE.Vector3(0, 1.5, 70), new THREE.Vector3(130, 1.5, 60), new THREE.Vector3(0, 1.5, -210), new THREE.Vector3(-120, 1.5, -70)].forEach(pos => {
       const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xffea00, metalness: 0.9, roughness: 0.1 }));
@@ -497,11 +484,10 @@
       smokes.push(smoke);
     }
 
-    // ★ リアルで高精細なレーシングカートメッシュの生成
+    // ★ 高さ補正を適用したカートメッシュ生成
     function createCarMesh(colorHex, carType = 'standard') {
       const carGroup = new THREE.Group();
       
-      // マテリアル（各種パーツ用）
       const paintMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.85, roughness: 0.15 });
       const carbonMat = new THREE.MeshStandardMaterial({ color: 0x111115, metalness: 0.4, roughness: 0.3 });
       const glassMat = new THREE.MeshStandardMaterial({ color: 0x111122, metalness: 0.9, roughness: 0.05, transparent: true, opacity: 0.85 });
@@ -513,54 +499,55 @@
       if (carType === 'speed') { length = 4.8; height = 0.65; }
       else if (carType === 'grip') { width = 2.4; length = 3.8; }
 
-      // 1. シャシー / ロアボディ
+      // タイヤの半径（底面接地用オフセット）
+      const wheelRadius = 0.42;
+
+      // 1. シャシー（地面の上にぴったり設置）
       const chassis = new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, 0.3, length), carbonMat);
-      chassis.position.y = 0.25; chassis.castShadow = true; carGroup.add(chassis);
+      chassis.position.y = wheelRadius + 0.15; chassis.castShadow = true; carGroup.add(chassis);
 
-      // 2. 流線型メインボディ
-      const bodyGeo = new THREE.BoxGeometry(width * 0.8, height * 0.6, length * 0.75);
-      const body = new THREE.Mesh(bodyGeo, paintMat);
-      body.position.set(0, height * 0.5, -0.1); body.castShadow = true; carGroup.add(body);
+      // 2. メインボディ
+      const body = new THREE.Mesh(new THREE.BoxGeometry(width * 0.8, height * 0.6, length * 0.75), paintMat);
+      body.position.set(0, wheelRadius + height * 0.4, -0.1); body.castShadow = true; carGroup.add(body);
 
-      // 3. フロントスポイラー（ウイング）
+      // 3. フロントスポイラー
       const frontWing = new THREE.Mesh(new THREE.BoxGeometry(width * 1.1, 0.12, 0.8), paintMat);
-      frontWing.position.set(0, 0.2, length / 2 + 0.1); frontWing.castShadow = true; carGroup.add(frontWing);
+      frontWing.position.set(0, wheelRadius + 0.06, length / 2 + 0.1); frontWing.castShadow = true; carGroup.add(frontWing);
 
-      // 4. コックピット & キャノピー (ウインドシールド)
+      // 4. キャノピー
       const cockpit = new THREE.Mesh(new THREE.BoxGeometry(width * 0.6, height * 0.6, length * 0.35), glassMat);
-      cockpit.position.set(0, height + 0.15, -0.2); cockpit.castShadow = true; carGroup.add(cockpit);
+      cockpit.position.set(0, wheelRadius + height + 0.05, -0.2); cockpit.castShadow = true; carGroup.add(cockpit);
 
-      // 5. バケットシート（内装）
+      // 5. バケットシート
       const seat = new THREE.Mesh(new THREE.BoxGeometry(width * 0.5, 0.6, 0.6), carbonMat);
-      seat.position.set(0, height * 0.6, -0.3); seat.rotation.x = -0.2; carGroup.add(seat);
+      seat.position.set(0, wheelRadius + height * 0.5, -0.3); seat.rotation.x = -0.2; carGroup.add(seat);
 
-      // 6. 大型リアウイング
+      // 6. リアウイング
       const wingMat = (carType === 'speed') ? paintMat : carbonMat;
       const wingMain = new THREE.Mesh(new THREE.BoxGeometry(width * 1.15, 0.08, 0.6), wingMat);
-      wingMain.position.set(0, height + 0.7, -length / 2 + 0.2); wingMain.castShadow = true; carGroup.add(wingMain);
+      wingMain.position.set(0, wheelRadius + height + 0.6, -length / 2 + 0.2); wingMain.castShadow = true; carGroup.add(wingMain);
 
       const wingPillar1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.3), carbonMat);
       const wingPillar2 = wingPillar1.clone();
-      wingPillar1.position.set(-width * 0.35, height + 0.35, -length / 2 + 0.2);
-      wingPillar2.position.set(width * 0.35, height + 0.35, -length / 2 + 0.2);
+      wingPillar1.position.set(-width * 0.35, wheelRadius + height + 0.3, -length / 2 + 0.2);
+      wingPillar2.position.set(width * 0.35, wheelRadius + height + 0.3, -length / 2 + 0.2);
       wingPillar1.castShadow = wingPillar2.castShadow = true;
       carGroup.add(wingPillar1); carGroup.add(wingPillar2);
 
-      // 7. エキゾーストマフラー（リア）
+      // 7. マフラー
       const muffler = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.5, 12), chromeMat);
       muffler.rotation.x = Math.PI / 2;
-      muffler.position.set(0, 0.35, -length / 2 - 0.05); carGroup.add(muffler);
+      muffler.position.set(0, wheelRadius + 0.2, -length / 2 - 0.05); carGroup.add(muffler);
 
-      // 8. LEDヘッドライト (発光パーツ)
+      // 8. ヘッドライト
       const hlGeo = new THREE.BoxGeometry(0.5, 0.12, 0.1);
       const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
       const hl1 = new THREE.Mesh(hlGeo, hlMat); const hl2 = hl1.clone();
-      hl1.position.set(-width * 0.32, height * 0.45, length / 2 + 0.02);
-      hl2.position.set(width * 0.32, height * 0.45, length / 2 + 0.02);
+      hl1.position.set(-width * 0.32, wheelRadius + height * 0.35, length / 2 + 0.02);
+      hl2.position.set(width * 0.32, wheelRadius + height * 0.35, length / 2 + 0.02);
       carGroup.add(hl1); carGroup.add(hl2);
 
-      // 9. スポーツホイール & リム & ブレーキキャリパー
-      const wheelRadius = 0.42;
+      // 9. ホイール（接地面がY=0に一致するように調整）
       const wheelWidth = 0.35;
       const wheelPositions = [
         [-width / 2 - 0.08, wheelRadius, length * 0.32],
@@ -569,18 +556,15 @@
         [width / 2 + 0.08, wheelRadius, -length * 0.32]
       ];
 
-      wheelPositions.forEach((pos, idx) => {
+      wheelPositions.forEach((pos) => {
         const wheelGroup = new THREE.Group();
         
-        // タイヤゴム
         const tire = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24), tireMat);
         tire.rotation.z = Math.PI / 2; tire.castShadow = true; wheelGroup.add(tire);
 
-        // ホイールリム（メッキ仕様）
         const rim = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius * 0.65, wheelRadius * 0.65, wheelWidth + 0.02, 16), chromeMat);
         rim.rotation.z = Math.PI / 2; wheelGroup.add(rim);
 
-        // 赤いブレーキキャリパー
         const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.2), brakeMat);
         caliper.position.set(pos[0] > 0 ? -0.1 : 0.1, 0.1, 0); wheelGroup.add(caliper);
 
@@ -659,8 +643,9 @@
     let isSinglePlayer = false;
     let aiCars = [];
 
+    // ★ 車の高さ (y) を 0.0 (接地面) に設定
     let myData = { 
-      x: 0, y: 0, z: 0, rotY: 0, speed: 0,
+      x: 0, y: 0.0, z: 0, rotY: 0, speed: 0,
       maxSpeed: 0.8, accel: 0.02, turnSpeed: 0.04,
       lap: 1, hasPassedCP: false, currentItem: null, spinTimer: 0, boostTimer: 0,
       isDrifting: false, driftCharge: 0, driftDir: 0
@@ -873,7 +858,7 @@
           const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
           
           const finalPos = centerPos.clone().add(normal.clone().multiplyScalar(ai.laneOffset));
-          finalPos.y *= 0.05;
+          finalPos.y *= 0.05; // コース高さに同期
 
           ai.mesh.position.copy(finalPos);
           ai.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
@@ -908,7 +893,7 @@
 
           let currentMaxSpeed = myData.maxSpeed;
 
-          // ガードレール壁判定・衝突処理
+          // 壁判定
           if (minDist > trackRadius - 0.5) {
             document.getElementById('offroad-warning').style.display = 'block';
             myData.speed *= 0.6;
@@ -947,7 +932,8 @@
         myData.x += Math.sin(myData.rotY) * myData.speed;
         myData.z += Math.cos(myData.rotY) * myData.speed;
 
-        localPlayerMesh.position.set(myData.x, myData.y, myData.z);
+        // ★ Y座標を0.0に接地させる
+        localPlayerMesh.position.set(myData.x, 0.0, myData.z);
         localPlayerMesh.rotation.y = myData.rotY + (myData.isDrifting ? myData.driftDir * 0.3 : 0);
 
         itemBoxes.forEach(b => {
@@ -980,7 +966,7 @@
         }
 
         if (!isSinglePlayer) {
-          socket.emit('playerTransform', { x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY });
+          socket.emit('playerTransform', { x: myData.x, y: 0.0, z: myData.z, rotY: myData.rotY });
         }
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
@@ -999,7 +985,7 @@
         camera.lookAt(lookAtTarget);
       }
 
-      // 他プレイヤーの頭上ネームタグ判定
+      // 他プレイヤーのネームタグ
       Object.keys(otherPlayers).forEach(id => {
         if (nametags[id]) {
           const pMesh = otherPlayers[id];
