@@ -14,7 +14,7 @@
     }
     #ui-container {
       position: absolute;
-      top: 10px;
+      top: 60px; /* FPS表示と重ならないよう位置を微調整 */
       left: 10px;
       color: #fff;
       font-size: 18px;
@@ -204,6 +204,8 @@
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- ★ Stats.js (FPSカウンターライブラリ) の読み込み -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -322,6 +324,15 @@
       if (bgmEnabled) { bgmEnabled = false; bgm.pause(); btn.innerText = "🎵 BGM: OFF"; }
       else { bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON"; }
     }
+
+    // ★ Stats.js の初期化 (FPS表示設定)
+    const stats = new Stats();
+    stats.showPanel(0); // 0: fps
+    stats.dom.style.position = 'absolute';
+    stats.dom.style.top = '10px';
+    stats.dom.style.left = '10px';
+    stats.dom.style.zIndex = '50';
+    document.body.appendChild(stats.dom);
 
     // 1. Three.js セットアップ
     const scene = new THREE.Scene();
@@ -650,7 +661,6 @@
     };
     const keys = {};
 
-    // ★ 隠しコマンド（コナミコマンド: ↑↑↓↓←→←→ba）検知処理
     const konamiCode = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
     let konamiIndex = 0;
 
@@ -658,7 +668,6 @@
       const key = e.key.toLowerCase();
       keys[key] = true;
 
-      // コマンド判定
       if (key === konamiCode[konamiIndex]) {
         konamiIndex++;
         if (konamiIndex === konamiCode.length) {
@@ -865,6 +874,8 @@
     // 描画ループ
     let lastCalculatedRank = 1;
     function animate() {
+      stats.begin(); // ★ Stats.js 計測開始
+
       requestAnimationFrame(animate);
 
       if (isSinglePlayer && canControl) {
@@ -915,11 +926,9 @@
           }
           myData.trackProgress = nearestT;
 
-          // ★ ゴッドモード時の限界突破性能
           let currentMaxSpeed = isGodMode ? myData.maxSpeed * 2.5 : myData.maxSpeed;
           let currentAccel = isGodMode ? myData.accel * 3 : myData.accel;
 
-          // 壁判定（ゴッドモード時は壁減速・押し戻し無効）
           if (minDist > trackRadius - 0.5) {
             if (!isGodMode) {
               document.getElementById('offroad-warning').style.display = 'block';
@@ -1070,6 +1079,8 @@
       });
 
       renderer.render(scene, camera);
+
+      stats.end(); // ★ Stats.js 計測完了
     }
 
     animate();
