@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D Multi-Racing Game</title>
+  <title>3D Multi-Racing Game - 10 Courses</title>
   <style>
     body {
       margin: 0;
@@ -88,7 +88,7 @@
       border-radius: 12px;
       border: 2px solid #555;
       text-align: center;
-      max-width: 500px;
+      max-width: 520px;
       width: 90%;
       max-height: 90vh;
       overflow-y: auto;
@@ -106,7 +106,7 @@
     }
     .select-field {
       padding: 8px 12px;
-      margin: 8px 0;
+      margin: 6px 0;
       border-radius: 6px;
       border: 1px solid #555;
       background: #333;
@@ -222,7 +222,6 @@
 </head>
 <body>
 
-  <!-- ★ 自作リアルタイムFPSカウンター表示 -->
   <div id="fps-display">FPS: --</div>
 
   <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
@@ -238,6 +237,23 @@
       <div>
         <label style="font-size: 14px; font-weight: bold;">プレイヤー名:</label><br>
         <input type="text" id="player-name" class="input-field" value="レーサー" maxlength="10">
+      </div>
+
+      <!-- コース選択 -->
+      <div style="margin-top: 10px;">
+        <label style="font-size: 14px; font-weight: bold; color: #00ffcc;">🏁 コース選択: </label>
+        <select id="course-select" class="select-field" onchange="changeCourse(this.value)">
+          <option value="0">1. クラシックサーキット (標準)</option>
+          <option value="1">2. エイトクロス (8の字)</option>
+          <option value="2">3. 爆速ハイウェイ (超高速)</option>
+          <option value="3">4. スネークツイスター (S字テクニカル)</option>
+          <option value="4">5. ビッグマウンテン (超大型)</option>
+          <option value="5">6. スターリング (星型コース)</option>
+          <option value="6">7. ジグザグアリーナ (ヘアピン連発)</option>
+          <option value="7">8. 首都高スタイル (急カーブ多重)</option>
+          <option value="8">9. ダブルループ (二重環状)</option>
+          <option value="9">10. ハイパーコースト (特大外周)</option>
+        </select>
       </div>
 
       <h3>カート選択</h3>
@@ -340,7 +356,6 @@
       else { bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON"; }
     }
 
-    // ★ 自作FPSカウンターの変数
     let frameCount = 0;
     let lastTime = performance.now();
     const fpsElem = document.getElementById('fps-display');
@@ -366,7 +381,7 @@
     const dirLight = new THREE.DirectionalLight(0xffaa55, 1.8);
     dirLight.position.set(120, 180, 80);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024; // 負荷軽減用に調整
+    dirLight.shadow.mapSize.width = 1024;
     dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 600;
@@ -384,22 +399,63 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    const coursePoints = [
-      new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100),
-      new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 5, -50),
-      new THREE.Vector3(80, 0, -220), new THREE.Vector3(-80, -5, -200),
-      new THREE.Vector3(-140, 0, -80), new THREE.Vector3(-80, 0, -40)
+    // ★ 10種類のコースデータ定義
+    const coursePresets = [
+      // 1. クラシック
+      [new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100), new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 5, -50), new THREE.Vector3(80, 0, -220), new THREE.Vector3(-80, -5, -200), new THREE.Vector3(-140, 0, -80), new THREE.Vector3(-80, 0, -40)],
+      // 2. 8の字
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(100, 0, 100), new THREE.Vector3(200, 0, 0), new THREE.Vector3(100, 0, -100), new THREE.Vector3(0, 0, 0), new THREE.Vector3(-100, 0, 100), new THREE.Vector3(-200, 0, 0), new THREE.Vector3(-100, 0, -100)],
+      // 3. 爆速ハイウェイ
+      [new THREE.Vector3(0, 0, -50), new THREE.Vector3(0, 0, 250), new THREE.Vector3(60, 0, 280), new THREE.Vector3(120, 0, 250), new THREE.Vector3(120, 0, -50), new THREE.Vector3(60, 0, -80)],
+      // 4. スネークツイスター
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(80, 0, 60), new THREE.Vector3(-80, 0, 120), new THREE.Vector3(80, 0, 180), new THREE.Vector3(-80, 0, 240), new THREE.Vector3(0, 0, 300), new THREE.Vector3(150, 0, 150), new THREE.Vector3(0, 0, -50)],
+      // 5. ビッグマウンテン
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(150, 10, 150), new THREE.Vector3(300, 20, 0), new THREE.Vector3(150, 10, -150), new THREE.Vector3(0, 0, -300), new THREE.Vector3(-150, -10, -150), new THREE.Vector3(-300, -20, 0), new THREE.Vector3(-150, -10, 150)],
+      // 6. スターリング
+      [new THREE.Vector3(0, 0, 150), new THREE.Vector3(40, 0, 40), new THREE.Vector3(150, 0, 0), new THREE.Vector3(40, 0, -40), new THREE.Vector3(0, 0, -150), new THREE.Vector3(-40, 0, -40), new THREE.Vector3(-150, 0, 0), new THREE.Vector3(-40, 0, 40)],
+      // 7. ジグザグアリーナ
+      [new THREE.Vector3(0, 0, -30), new THREE.Vector3(0, 0, 80), new THREE.Vector3(100, 0, 80), new THREE.Vector3(100, 0, 160), new THREE.Vector3(-100, 0, 160), new THREE.Vector3(-100, 0, -50)],
+      // 8. 首都高スタイル
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(50, 0, 120), new THREE.Vector3(160, 0, 80), new THREE.Vector3(100, 0, -60), new THREE.Vector3(-40, 0, -120), new THREE.Vector3(-140, 0, -40)],
+      // 9. ダブルループ
+      [new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 120), new THREE.Vector3(120, 0, 120), new THREE.Vector3(120, 0, -20), new THREE.Vector3(60, 0, 40), new THREE.Vector3(-60, 0, 40)],
+      // 10. ハイパーコースト
+      [new THREE.Vector3(0, 0, -100), new THREE.Vector3(200, 0, -100), new THREE.Vector3(250, 0, 100), new THREE.Vector3(100, 0, 250), new THREE.Vector3(-100, 0, 250), new THREE.Vector3(-250, 0, 100), new THREE.Vector3(-200, 0, -100)]
     ];
-    const curve = new THREE.CatmullRomCurve3(coursePoints, true);
-    
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.5, metalness: 0.2 });
-    const trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 250, 12, 16, true), trackMat);
-    trackMesh.scale.y = 0.05;
-    trackMesh.receiveShadow = true;
-    scene.add(trackMesh);
 
+    let currentCourseIndex = 0;
+    let curve = new THREE.CatmullRomCurve3(coursePresets[0], true);
+    let trackMesh = null;
+    let guardrailGroup = new THREE.Group();
+    let treeGroup = new THREE.Group();
+    let finishLineGroup = new THREE.Group();
+    let checkpointMesh = null;
     const trackRadius = 11.5;
-    function createGuardrails() {
+
+    scene.add(guardrailGroup);
+    scene.add(treeGroup);
+    scene.add(finishLineGroup);
+
+    const trackMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.5, metalness: 0.2 });
+
+    function buildCourse(index) {
+      currentCourseIndex = index;
+      curve = new THREE.CatmullRomCurve3(coursePresets[index], true);
+
+      // 古いメッシュ削除
+      if (trackMesh) scene.remove(trackMesh);
+      while(guardrailGroup.children.length) guardrailGroup.remove(guardrailGroup.children[0]);
+      while(treeGroup.children.length) treeGroup.remove(treeGroup.children[0]);
+      while(finishLineGroup.children.length) finishLineGroup.remove(finishLineGroup.children[0]);
+      if (checkpointMesh) scene.remove(checkpointMesh);
+
+      // トラック
+      trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 12, 16, true), trackMat);
+      trackMesh.scale.y = 0.05;
+      trackMesh.receiveShadow = true;
+      scene.add(trackMesh);
+
+      // ガードレール
       const railSegments = 300;
       const railMat = new THREE.MeshStandardMaterial({ color: 0xee2222, metalness: 0.6, roughness: 0.3 });
       const postMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
@@ -423,8 +479,7 @@
           pos1.y *= 0.05; pos2.y *= 0.05;
 
           const dist = pos1.distanceTo(pos2);
-          const railGeo = new THREE.BoxGeometry(0.4, 1.2, dist + 0.1);
-          const railMesh = new THREE.Mesh(railGeo, railMat);
+          const railMesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, dist + 0.1), railMat);
 
           const midPos = pos1.clone().add(pos2).multiplyScalar(0.5);
           midPos.y += 0.6;
@@ -432,73 +487,67 @@
 
           const dir = pos2.clone().sub(pos1);
           railMesh.rotation.y = Math.atan2(dir.x, dir.z);
-          railMesh.castShadow = true;
-          railMesh.receiveShadow = true;
-          scene.add(railMesh);
+          guardrailGroup.add(railMesh);
 
           if (i % 3 === 0) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8), postMat);
-            post.position.copy(pos1);
-            post.position.y += 0.6;
-            post.castShadow = true;
-            scene.add(post);
+            post.position.copy(pos1); post.position.y += 0.6;
+            guardrailGroup.add(post);
           }
         }
       }
-    }
-    createGuardrails();
 
-    function createTree(x, z) {
-      const treeGroup = new THREE.Group();
-      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.9 });
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 3, 6), trunkMat);
-      trunk.position.y = 1.5; trunk.castShadow = true; treeGroup.add(trunk);
+      // 木々
+      for (let i = 0; i <= 150; i++) {
+        const pt = curve.getPoint(i / 150);
+        const tangent = curve.getTangent(i / 150);
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+        createTreeMesh(pt.x + normal.x * (18 + Math.random() * 8), pt.z + normal.z * (18 + Math.random() * 8));
+        createTreeMesh(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
+      }
 
-      const leafMat = new THREE.MeshStandardMaterial({ color: 0x1d5e23, roughness: 0.8 });
-      const leaves = new THREE.Mesh(new THREE.ConeGeometry(3.2, 7, 6), leafMat);
-      leaves.position.y = 5.5; leaves.castShadow = true; treeGroup.add(leaves);
-      
-      treeGroup.position.set(x, 0, z);
-      scene.add(treeGroup);
-    }
-
-    for (let i = 0; i <= 150; i++) {
-      const pt = curve.getPoint(i / 150);
-      const tangent = curve.getTangent(i / 150);
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      createTree(pt.x + normal.x * (18 + Math.random() * 8), pt.z + normal.z * (18 + Math.random() * 8));
-      createTree(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
-    }
-
-    function createFinishLine() {
-      const group = new THREE.Group();
+      // ゴールライン (コースの起点付近)
+      const startPt = curve.getPoint(0.05);
       const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
       const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,128); ctx.fillStyle = '#000000'; ctx.fillRect(0,0,64,64); ctx.fillRect(64,64,64,64);
       const checkerTex = new THREE.CanvasTexture(canvas); checkerTex.wrapS = checkerTex.wrapT = THREE.RepeatWrapping; checkerTex.repeat.set(4, 1);
 
       const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ map: checkerTex, roughness: 0.4 }));
-      lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.02; lineMesh.receiveShadow = true; group.add(lineMesh);
+      lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.02; finishLineGroup.add(lineMesh);
+      finishLineGroup.position.copy(startPt);
 
-      const pillarMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.5, roughness: 0.3 });
-      const p1 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat); p1.position.set(-12, 5, 0); p1.castShadow = true;
-      const p2 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat); p2.position.set(12, 5, 0); p2.castShadow = true;
-      group.add(p1); group.add(p2);
+      // 中間チェックポイント (コースの50%地点)
+      const midPt = curve.getPoint(0.5);
+      checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
+      checkpointMesh.position.copy(midPt); checkpointMesh.position.y += 5;
+      scene.add(checkpointMesh);
 
-      const arch = new THREE.Mesh(new THREE.BoxGeometry(25, 3, 1), new THREE.MeshStandardMaterial({ map: checkerTex }));
-      arch.position.set(0, 10, 0); arch.castShadow = true; group.add(arch);
-      group.position.set(0, 0, 40); scene.add(group);
+      // アイテムボックス配置 (25%, 50%, 75% 地点)
+      itemBoxes.length = 0;
+      [0.25, 0.5, 0.75].forEach(t => {
+        const pt = curve.getPoint(t);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xffea00, metalness: 0.9, roughness: 0.1 }));
+        box.position.set(pt.x, 1.5, pt.z); scene.add(box);
+        itemBoxes.push({ mesh: box, active: true, respawnTimer: 0 });
+      });
     }
-    createFinishLine();
 
-    const checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
-    checkpointMesh.position.set(80, 5, -220); scene.add(checkpointMesh);
+    function createTreeMesh(x, z) {
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.9 });
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 3, 6), trunkMat);
+      trunk.position.set(x, 1.5, z); treeGroup.add(trunk);
+
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x1d5e23, roughness: 0.8 });
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(3.2, 7, 6), leafMat);
+      leaves.position.set(x, 5.5, z); treeGroup.add(leaves);
+    }
 
     const itemBoxes = [];
-    [new THREE.Vector3(0, 1.5, 70), new THREE.Vector3(130, 1.5, 60), new THREE.Vector3(0, 1.5, -210), new THREE.Vector3(-120, 1.5, -70)].forEach(pos => {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xffea00, metalness: 0.9, roughness: 0.1 }));
-      box.position.copy(pos); box.castShadow = true; scene.add(box);
-      itemBoxes.push({ mesh: box, active: true, respawnTimer: 0 });
-    });
+    buildCourse(0); // 初期コースビルド
+
+    function changeCourse(idx) {
+      buildCourse(parseInt(idx));
+    }
 
     const bananas = [];
     function spawnBananaMesh(id, x, z) {
@@ -531,41 +580,33 @@
       const wheelRadius = 0.42;
 
       const chassis = new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, 0.3, length), carbonMat);
-      chassis.position.y = wheelRadius + 0.15; chassis.castShadow = true; carGroup.add(chassis);
+      chassis.position.y = wheelRadius + 0.15; carGroup.add(chassis);
 
       const body = new THREE.Mesh(new THREE.BoxGeometry(width * 0.8, height * 0.6, length * 0.75), paintMat);
-      body.position.set(0, wheelRadius + height * 0.4, -0.1); body.castShadow = true; carGroup.add(body);
+      body.position.set(0, wheelRadius + height * 0.4, -0.1); carGroup.add(body);
 
       const frontWing = new THREE.Mesh(new THREE.BoxGeometry(width * 1.1, 0.12, 0.8), paintMat);
-      frontWing.position.set(0, wheelRadius + 0.06, length / 2 + 0.1); frontWing.castShadow = true; carGroup.add(frontWing);
+      frontWing.position.set(0, wheelRadius + 0.06, length / 2 + 0.1); carGroup.add(frontWing);
 
       const cockpit = new THREE.Mesh(new THREE.BoxGeometry(width * 0.6, height * 0.6, length * 0.35), glassMat);
-      cockpit.position.set(0, wheelRadius + height + 0.05, -0.2); cockpit.castShadow = true; carGroup.add(cockpit);
+      cockpit.position.set(0, wheelRadius + height + 0.05, -0.2); carGroup.add(cockpit);
 
       const seat = new THREE.Mesh(new THREE.BoxGeometry(width * 0.5, 0.6, 0.6), carbonMat);
       seat.position.set(0, wheelRadius + height * 0.5, -0.3); seat.rotation.x = -0.2; carGroup.add(seat);
 
       const wingMat = (carType === 'speed') ? paintMat : carbonMat;
       const wingMain = new THREE.Mesh(new THREE.BoxGeometry(width * 1.15, 0.08, 0.6), wingMat);
-      wingMain.position.set(0, wheelRadius + height + 0.6, -length / 2 + 0.2); wingMain.castShadow = true; carGroup.add(wingMain);
+      wingMain.position.set(0, wheelRadius + height + 0.6, -length / 2 + 0.2); carGroup.add(wingMain);
 
       const wingPillar1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.3), carbonMat);
       const wingPillar2 = wingPillar1.clone();
       wingPillar1.position.set(-width * 0.35, wheelRadius + height + 0.3, -length / 2 + 0.2);
       wingPillar2.position.set(width * 0.35, wheelRadius + height + 0.3, -length / 2 + 0.2);
-      wingPillar1.castShadow = wingPillar2.castShadow = true;
       carGroup.add(wingPillar1); carGroup.add(wingPillar2);
 
       const muffler = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.5, 12), chromeMat);
       muffler.rotation.x = Math.PI / 2;
       muffler.position.set(0, wheelRadius + 0.2, -length / 2 - 0.05); carGroup.add(muffler);
-
-      const hlGeo = new THREE.BoxGeometry(0.5, 0.12, 0.1);
-      const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const hl1 = new THREE.Mesh(hlGeo, hlMat); const hl2 = hl1.clone();
-      hl1.position.set(-width * 0.32, wheelRadius + height * 0.35, length / 2 + 0.02);
-      hl2.position.set(width * 0.32, wheelRadius + height * 0.35, length / 2 + 0.02);
-      carGroup.add(hl1); carGroup.add(hl2);
 
       const wheelWidth = 0.35;
       const wheelPositions = [
@@ -577,18 +618,11 @@
 
       wheelPositions.forEach((pos) => {
         const wheelGroup = new THREE.Group();
-        
         const tire = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24), tireMat);
-        tire.rotation.z = Math.PI / 2; tire.castShadow = true; wheelGroup.add(tire);
-
+        tire.rotation.z = Math.PI / 2; wheelGroup.add(tire);
         const rim = new THREE.Mesh(new THREE.CylinderGeometry(wheelRadius * 0.65, wheelRadius * 0.65, wheelWidth + 0.02, 16), chromeMat);
         rim.rotation.z = Math.PI / 2; wheelGroup.add(rim);
-
-        const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.2), brakeMat);
-        caliper.position.set(pos[0] > 0 ? -0.1 : 0.1, 0.1, 0); wheelGroup.add(caliper);
-
-        wheelGroup.position.set(...pos);
-        carGroup.add(wheelGroup);
+        wheelGroup.position.set(...pos); carGroup.add(wheelGroup);
       });
 
       return carGroup;
@@ -631,11 +665,7 @@
       const qrContainer = document.getElementById('qrcode-container');
       qrContainer.innerHTML = '';
       const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-      new QRCode(qrContainer, {
-        text: joinUrl,
-        width: 128,
-        height: 128
-      });
+      new QRCode(qrContainer, { text: joinUrl, width: 128, height: 128 });
     }
 
     function copyInviteLink() {
@@ -723,6 +753,9 @@
         localPlayerMesh = createCarMesh('#00ffcc', selectedCarType);
         scene.add(localPlayerMesh);
       }
+      // スタート位置の調整
+      const startPt = curve.getPoint(0.01);
+      myData.x = startPt.x; myData.z = startPt.z;
     }
 
     function startSinglePlayer() {
@@ -740,19 +773,8 @@
       const offsets = [-3.5, 3.5];
 
       const diff = document.getElementById('ai-difficulty').value;
-      
-      let baseSpeed = 0.00025;
-      let laneScale = 1.0;
-      if (diff === 'easy') {
-        baseSpeed = 0.00020;
-        laneScale = 1.2;
-      } else if (diff === 'normal') {
-        baseSpeed = 0.00030;
-        laneScale = 0.9;
-      } else if (diff === 'hard') {
-        baseSpeed = 0.00052;
-        laneScale = 0.3;
-      }
+      let baseSpeed = (diff === 'easy') ? 0.00020 : (diff === 'normal') ? 0.00030 : 0.00052;
+      let laneScale = (diff === 'easy') ? 1.2 : (diff === 'normal') ? 0.9 : 0.3;
 
       for (let i = 0; i < 2; i++) {
         const aiMesh = createCarMesh(aiColors[i], 'standard');
@@ -887,7 +909,6 @@
     function animate() {
       requestAnimationFrame(animate);
 
-      // ★ 自作FPS計算処理（毎秒更新）
       frameCount++;
       const now = performance.now();
       if (now >= lastTime + 1000) {
@@ -1010,12 +1031,14 @@
           }
         });
 
-        if (Math.hypot(myData.x - 80, myData.z - (-220)) < 25 && !myData.hasPassedCP) {
+        const midPt = curve.getPoint(0.5);
+        if (Math.hypot(myData.x - midPt.x, myData.z - midPt.z) < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
           document.getElementById('checkpoint-msg').innerText = "OK! ゴールを目指せ！";
         }
 
-        if (myData.hasPassedCP && Math.abs(myData.x) < 12 && Math.abs(myData.z - 40) < 4) {
+        const startPt = curve.getPoint(0.05);
+        if (myData.hasPassedCP && Math.hypot(myData.x - startPt.x, myData.z - startPt.z) < 20) {
           myData.hasPassedCP = false; myData.lap++;
           document.getElementById('lap-display').innerText = Math.min(myData.lap, 3);
           document.getElementById('checkpoint-msg').innerText = "NEXT: 中間チェックポイントを目指せ";
