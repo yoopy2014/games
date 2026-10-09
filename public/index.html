@@ -30,6 +30,12 @@
     #item-stock { font-size: 20px; color: #ff00ea; margin-top: 5px; }
     #drift-status { font-size: 22px; color: #00ffff; margin-top: 5px; display: none; text-shadow: 0 0 10px #00ffff; }
     #offroad-warning { color: #ff3333; font-size: 18px; display: none; }
+    #god-mode-msg { color: #ffea00; font-size: 22px; display: none; text-shadow: 0 0 12px #ffea00; animation: pulse 1s infinite alternate; }
+
+    @keyframes pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
     
     .top-btn {
       position: absolute;
@@ -285,8 +291,8 @@
     <div id="item-stock">ITEM: なし [Eキーで使用]</div>
     <div id="drift-status">💨 DRIFT CHARGING... [Shift]</div>
     <div id="offroad-warning">⚠️ ガードレール衝突中！</div>
+    <div id="god-mode-msg">★ GOD MODE ENABLED ★</div>
     <div id="status-msg">待機中...</div>
-    <div id="god-mode" style="color: #ffea00; display: none;">★ GOD MODE ENABLED ★</div>
   </div>
 
   <div id="countdown">3</div>
@@ -633,6 +639,7 @@
     let canControl = false;
     let isSinglePlayer = false;
     let aiCars = [];
+    let isGodMode = false;
 
     let myData = { 
       x: 0, y: 0.0, z: 0, rotY: 0, speed: 0,
@@ -643,9 +650,27 @@
     };
     const keys = {};
 
+    // ★ 隠しコマンド（コナミコマンド: ↑↑↓↓←→←→ba）検知処理
+    const konamiCode = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+    let konamiIndex = 0;
+
     window.addEventListener('keydown', e => {
-      keys[e.key.toLowerCase()] = true;
-      if (e.key.toLowerCase() === 'e') useItem();
+      const key = e.key.toLowerCase();
+      keys[key] = true;
+
+      // コマンド判定
+      if (key === konamiCode[konamiIndex]) {
+        konamiIndex++;
+        if (konamiIndex === konamiCode.length) {
+          isGodMode = !isGodMode;
+          document.getElementById('god-mode-msg').style.display = isGodMode ? 'block' : 'none';
+          konamiIndex = 0;
+        }
+      } else {
+        konamiIndex = 0;
+      }
+
+      if (key === 'e') useItem();
     });
     
     window.addEventListener('keyup', e => {
@@ -688,7 +713,6 @@
       startCountdownLocal();
     }
 
-    // ★ NPC難易度・「激ムズ」はプレイヤーより少し速いスピード (0.00052) に調整
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
@@ -706,8 +730,8 @@
         baseSpeed = 0.00030;
         laneScale = 0.9;
       } else if (diff === 'hard') {
-        baseSpeed = 0.00052; // ★ プレイヤー最高速度を少し上回る激強スピード
-        laneScale = 0.3;     // ★ インコースをぎりぎりに攻める
+        baseSpeed = 0.00052;
+        laneScale = 0.3;
       }
 
       for (let i = 0; i < 2; i++) {
@@ -868,7 +892,7 @@
 
       // 操作入力＆位置更新
       if (canControl && localPlayerMesh) {
-        if (myData.spinTimer > 0) {
+        if (myData.spinTimer > 0 && !isGodMode) {
           myData.spinTimer--; myData.rotY += 0.3; myData.speed *= 0.8;
         } else {
           const myPos = new THREE.Vector3(myData.x, 0, myData.z);
@@ -891,17 +915,21 @@
           }
           myData.trackProgress = nearestT;
 
-          let currentMaxSpeed = myData.maxSpeed;
+          // ★ ゴッドモード時の限界突破性能
+          let currentMaxSpeed = isGodMode ? myData.maxSpeed * 2.5 : myData.maxSpeed;
+          let currentAccel = isGodMode ? myData.accel * 3 : myData.accel;
 
-          // 壁判定
+          // 壁判定（ゴッドモード時は壁減速・押し戻し無効）
           if (minDist > trackRadius - 0.5) {
-            document.getElementById('offroad-warning').style.display = 'block';
-            myData.speed *= 0.6;
+            if (!isGodMode) {
+              document.getElementById('offroad-warning').style.display = 'block';
+              myData.speed *= 0.6;
 
-            if (nearestPoint && nearestNormal) {
-              const toCenter = new THREE.Vector3(nearestPoint.x, 0, nearestPoint.z).sub(myPos).normalize();
-              myData.x += toCenter.x * 0.4;
-              myData.z += toCenter.z * 0.4;
+              if (nearestPoint && nearestNormal) {
+                const toCenter = new THREE.Vector3(nearestPoint.x, 0, nearestPoint.z).sub(myPos).normalize();
+                myData.x += toCenter.x * 0.4;
+                myData.z += toCenter.z * 0.4;
+              }
             }
           } else {
             document.getElementById('offroad-warning').style.display = 'none';
@@ -911,8 +939,8 @@
             myData.boostTimer--; currentMaxSpeed = myData.maxSpeed * 2.2;
           }
 
-          if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel * 2, currentMaxSpeed);
-          else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -currentMaxSpeed * 0.4);
+          if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + currentAccel * 2, currentMaxSpeed);
+          else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - currentAccel, -currentMaxSpeed * 0.4);
           else if (myData.boostTimer <= 0) myData.speed *= 0.96;
 
           const isSteeringLeft = keys['a'] || keys['arrowleft'];
@@ -948,7 +976,10 @@
 
         bananas.forEach(b => {
           if (Math.hypot(myData.x - b.mesh.position.x, myData.z - b.mesh.position.z) < 2.2) {
-            myData.spinTimer = 30; socket.emit('remove_banana', b.id);
+            if (!isGodMode) {
+              myData.spinTimer = 30; 
+            }
+            socket.emit('remove_banana', b.id);
           }
         });
 
