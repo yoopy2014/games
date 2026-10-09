@@ -3,139 +3,140 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>レース管理者ダッシュボード</title>
+  <title>ゲーム管理者ダッシュボード</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #1a1a1a;
+      background: #111;
       color: #fff;
-      padding: 20px;
+      margin: 20px;
     }
+    h1 { color: #ff0055; text-align: center; }
     .card {
-      background: #2a2a2a;
-      padding: 15px;
+      background: #222;
+      border: 1px solid #444;
       border-radius: 8px;
-      max-width: 450px;
+      padding: 15px;
       margin-bottom: 20px;
     }
-    input, button {
+    .card h2 { margin-top: 0; color: #00ffcc; border-bottom: 1px solid #444; padding-bottom: 8px; }
+    table {
       width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border-radius: 4px;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
       border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+    th { background: #333; color: #ffea00; }
+    .btn {
+      background: #ff0055;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn:hover { background: #ff3377; }
+    .btn-small { padding: 3px 8px; font-size: 12px; }
+    input[type="text"] {
+      padding: 8px;
       background: #333;
       color: #fff;
-      box-sizing: border-box;
-    }
-    button {
-      background: #ff0055;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #ff2277;
-    }
-    .btn-env {
-      background: #4444ff;
-    }
-    .player-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: #333;
-      padding: 8px 12px;
-      margin-top: 8px;
+      border: 1px solid #555;
       border-radius: 4px;
-    }
-    .god-badge {
-      color: #ffea00;
-      font-weight: bold;
-    }
-    .btn-god {
-      width: auto;
-      margin: 0;
-      padding: 6px 12px;
-      background: #ffaa00;
-      color: #000;
+      width: 70%;
     }
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
-  <h1>レース管理者ダッシュボード</h1>
+  <h1>⚙️ レースゲーム 管理者パネル</h1>
 
   <div class="card">
-    <label>管理者パスワード:</label>
-    <input type="password" id="pass" value="admin123">
+    <h2>サーバー接続状態</h2>
+    <p>ステータス: <span id="status" style="color:#00ffcc; font-weight:bold;">接続中...</span></p>
+    <button class="btn" onclick="refreshData()">🔄 手動更新</button>
   </div>
 
   <div class="card">
-    <h3>プレイヤー管理 (最強化コマンド)</h3>
-    <div id="player-list">プレイヤー読み込み中...</div>
+    <h2>アクティブパーティー部屋一覧</h2>
+    <div id="rooms-container">部屋データを取得中...</div>
   </div>
 
   <div class="card">
-    <h3>レースコントロール</h3>
-    <button onclick="startRace()">レース一斉スタート (カウントダウン開始)</button>
-  </div>
-
-  <div class="card">
-    <h3>環境・背景変更</h3>
-    <button class="btn-env" onclick="setEnv('sunset')">夕焼けモード</button>
-    <button class="btn-env" onclick="setEnv('night')">夜空モード</button>
+    <h2>全体アナウンス送信</h2>
+    <input type="text" id="announce-msg" placeholder="全プレイヤーの画面に通知するメッセージを入力">
+    <button class="btn" onclick="sendBroadcast()">📢 アナウンス送信</button>
   </div>
 
   <script>
     const socket = io();
 
-    // 接続中のプレイヤー一覧をリアルタイム更新
-    socket.on('updatePlayers', (players) => {
-      const listContainer = document.getElementById('player-list');
-      listContainer.innerHTML = '';
+    socket.on('connect', () => {
+      document.getElementById('status').innerText = '接続済み (ID: ' + socket.id + ')';
+      socket.emit('admin_get_rooms');
+    });
 
-      const keys = Object.keys(players);
-      if (keys.length === 0) {
-        listContainer.innerText = '接続中のプレイヤーはいません';
+    socket.on('disconnect', () => {
+      document.getElementById('status').innerText = '切断されました';
+    });
+
+    socket.on('admin_rooms_data', (rooms) => {
+      const container = document.getElementById('rooms-container');
+      if (!rooms || Object.keys(rooms).length === 0) {
+        container.innerHTML = '<p style="color:#888;">現在アクティブなマルチプレイヤー部屋はありません。</p>';
         return;
       }
 
-      keys.forEach((id) => {
-        const p = players[id];
-        const row = document.createElement('div');
-        row.className = 'player-row';
-        
-        const isSelf = id === socket.id ? ' (管理者自身)' : '';
-        const status = p.isGod ? '<span class="god-badge">★ GOD</span>' : 'NORMAL';
+      let html = '';
+      Object.keys(rooms).forEach(code => {
+        const room = rooms[code];
+        html += `<div style="background:#2a2a2a; padding:10px; margin-bottom:12px; border-radius:6px; border-left:4px solid #ff0055;">`;
+        html += `<h3 style="margin:0 0 8px 0; color:#00ffcc;">ROOM: ${code} <span style="font-size:12px; color:#aaa;">(参加人数: ${Object.keys(room.players).length}名)</span></h3>`;
+        html += `<table><tr><th>Socket ID</th><th>名前</th><th>タイプ</th><th>ホスト</th><th>操作</th></tr>`;
 
-        row.innerHTML = `
-          <div>
-            <span style="color:${p.color}; font-weight:bold;">■</span> 
-            ${id.substring(0, 6)}...${isSelf} - ${status}
-          </div>
-          <button class="btn-god" onclick="toggleGod('${id}')">
-            ${p.isGod ? '通常に戻す' : '最強にする'}
-          </button>
-        `;
-        listContainer.appendChild(row);
+        Object.keys(room.players).forEach(pId => {
+          const p = room.players[pId];
+          html += `<tr>
+            <td>${pId}</td>
+            <td style="color:${p.color}; font-weight:bold;">${p.name}</td>
+            <td>${p.carType}</td>
+            <td>${p.isHost ? '👑 Lead' : '-'}</td>
+            <td><button class="btn btn-small" onclick="kickPlayer('${pId}')">キック</button></td>
+          </tr>`;
+        });
+
+        html += `</table></div>`;
       });
+
+      container.innerHTML = html;
     });
 
-    function toggleGod(targetId) {
-      const pass = document.getElementById('pass').value;
-      socket.emit('admin_toggle_god', { pass, targetId });
+    function refreshData() {
+      socket.emit('admin_get_rooms');
     }
 
-    function startRace() {
-      const pass = document.getElementById('pass').value;
-      socket.emit('admin_start_race', { pass });
+    function kickPlayer(targetId) {
+      if (confirm(`プレイヤー [ ${targetId} ] をキックしますか？`)) {
+        socket.emit('admin_kick_player', targetId);
+        setTimeout(refreshData, 500);
+      }
     }
 
-    function setEnv(skyType) {
-      const pass = document.getElementById('pass').value;
-      socket.emit('admin_change_env', { pass, skyType });
+    function sendBroadcast() {
+      const msg = document.getElementById('announce-msg').value.trim();
+      if (!msg) return alert('メッセージを入力してください');
+      socket.emit('admin_broadcast_msg', msg);
+      document.getElementById('announce-msg').value = '';
+      alert('アナウンスを送信しました！');
     }
+
+    setInterval(refreshData, 5000);
   </script>
 </body>
 </html>
