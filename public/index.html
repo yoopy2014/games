@@ -101,11 +101,9 @@
 </head>
 <body>
 
-  <!-- 音声コントロール & 管理者リンク -->
   <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
   <a id="admin-link" class="top-btn" href="/admin.html" target="_blank">⚙️ 管理者画面</a>
 
-  <!-- BGM音源（オープンソース/パブリックドメインのレーシングBGM風楽曲） -->
   <audio id="bgm" loop preload="auto">
     <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73180.mp3?filename=synthwave-80s-110045.mp3" type="audio/mpeg">
   </audio>
@@ -128,7 +126,7 @@
 
     // --- BGM 管理 ---
     const bgm = document.getElementById('bgm');
-    bgm.volume = 0.3; // 音量を30%に設定
+    bgm.volume = 0.3;
     let bgmEnabled = true;
 
     function playBGM() {
@@ -150,7 +148,6 @@
       }
     }
 
-    // ブラウザの自動再生規制対策（キーを押したらBGMスタート）
     window.addEventListener('keydown', () => playBGM(), { once: true });
     window.addEventListener('click', () => playBGM(), { once: true });
 
@@ -206,6 +203,43 @@
     trackMesh.scale.y = 0.05;
     trackMesh.receiveShadow = true;
     scene.add(trackMesh);
+
+    // --- ★ 木の自動生成（コース沿いに配置してスピード感を演出） ---
+    function createTree(x, z) {
+      const treeGroup = new THREE.Group();
+      
+      // 幹（茶色）
+      const trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 3, 6);
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.5;
+      treeGroup.add(trunk);
+
+      // 葉（緑のコーン）
+      const leavesGeo = new THREE.ConeGeometry(3, 7, 6);
+      const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1e6f28, roughness: 0.8 });
+      const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+      leaves.position.y = 5.5;
+      treeGroup.add(leaves);
+
+      treeGroup.position.set(x, 0, z);
+      scene.add(treeGroup);
+    }
+
+    // コース曲線に沿って左右に木を配置
+    for (let i = 0; i <= 150; i++) {
+      const pt = curve.getPoint(i / 150);
+      const tangent = curve.getTangent(i / 150);
+      // 法線ベクトル（横方向）を算出
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+      // 道路の左右オフセット（18〜25ほど離した位置）
+      const distL = 18 + Math.random() * 8;
+      const distR = 18 + Math.random() * 8;
+
+      createTree(pt.x + normal.x * distL, pt.z + normal.z * distL);
+      createTree(pt.x - normal.x * distR, pt.z - normal.z * distR);
+    }
 
     // ゴールゲート
     function createFinishLine() {
@@ -415,7 +449,7 @@
     });
 
     socket.on('startCountdown', () => {
-      playBGM(); // カウントダウン時にもBGM再生開始
+      playBGM();
       let count = 3;
       canControl = false;
       myData.speed = 0;
