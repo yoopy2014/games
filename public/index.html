@@ -505,13 +505,22 @@
       startCountdownLocal();
     }
 
+    // ★ AIカートの初期化（速度調整 & 横に並べて配置）
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
+      const aiColors = ['#ff2222', '#3388ff'];
+      const offsets = [-3, 3];
+
       for (let i = 0; i < 2; i++) {
-        const aiMesh = createCarMesh('#ff0000', 'standard');
+        const aiMesh = createCarMesh(aiColors[i], 'standard');
         scene.add(aiMesh);
-        aiCars.push({ mesh: aiMesh, progress: 0.05 + i * 0.02, speed: 0.0015 + Math.random() * 0.0005 });
+        aiCars.push({ 
+          mesh: aiMesh, 
+          progress: 0.01 + i * 0.015, // スタート位置を少しずらす
+          laneOffset: offsets[i],     // レーンの左右オフセット
+          speed: 0.0003 + Math.random() * 0.0001 // ★ 適切なレース速度に修正（速すぎない）
+        });
       }
     }
 
@@ -632,12 +641,23 @@
     function animate() {
       requestAnimationFrame(animate);
 
+      // ★ AIカートの走行処理（コースの高低差・進行方向・レーン幅を完全に合わせる）
       if (isSinglePlayer && canControl) {
         aiCars.forEach(ai => {
           ai.progress = (ai.progress + ai.speed) % 1.0;
-          const pos = curve.getPoint(ai.progress);
-          const tangent = curve.getTangent(ai.progress);
-          ai.mesh.position.copy(pos);
+          
+          // コース上の中心点と接線ベクトルを取得
+          const centerPos = curve.getPoint(ai.progress);
+          const tangent = curve.getTangent(ai.progress).normalize();
+          
+          // レーン幅（法線方向）のオフセット計算
+          const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+          
+          // 左右にずらして高さをコース表面（TubeGeometryのスケール0.05考慮）にぴったり接地
+          const finalPos = centerPos.clone().add(normal.clone().multiplyScalar(ai.laneOffset));
+          finalPos.y *= 0.05; // 地形高さを合わせる（空中に浮かない）
+
+          ai.mesh.position.copy(finalPos);
           ai.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
         });
       }
@@ -729,15 +749,13 @@
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
 
-      // ★ カメラ追従処理（自車が存在する場合は常に自車の後方上空から撮影）
+      // カメラ追従処理
       if (localPlayerMesh) {
-        // 車の背後（-Z方向）に14、高さ（+Y方向）に4.5離れたカメラ位置を計算
         const relativeOffset = new THREE.Vector3(0, 4.5, -14);
         relativeOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
         
         camera.position.copy(localPlayerMesh.position).add(relativeOffset);
 
-        // 車の少し前方（+Z方向に6）を見つめる
         const targetOffset = new THREE.Vector3(0, 1.2, 6);
         targetOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
         const lookAtTarget = localPlayerMesh.position.clone().add(targetOffset);
