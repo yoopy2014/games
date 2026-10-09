@@ -278,7 +278,6 @@
   </audio>
 
   <div id="ui-container">
-    <!-- ★ 順位表示 UI -->
     <div id="rank-display">1st <span style="font-size: 20px; color: #bbb;">/ 3</span></div>
     <div>LAP: <span id="lap-display">1</span> / 3</div>
     <div id="speedometer">0 km/h</div>
@@ -640,7 +639,7 @@
       maxSpeed: 0.8, accel: 0.02, turnSpeed: 0.04,
       lap: 1, hasPassedCP: false, currentItem: null, spinTimer: 0, boostTimer: 0,
       isDrifting: false, driftCharge: 0, driftDir: 0,
-      trackProgress: 0 // コース進行度 (0.0 ~ 1.0)
+      trackProgress: 0
     };
     const keys = {};
 
@@ -689,6 +688,7 @@
       startCountdownLocal();
     }
 
+    // ★ NPC難易度・「激ムズ」はプレイヤーより少し速いスピード (0.00052) に調整
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
@@ -706,8 +706,8 @@
         baseSpeed = 0.00030;
         laneScale = 0.9;
       } else if (diff === 'hard') {
-        baseSpeed = 0.00042;
-        laneScale = 0.4;
+        baseSpeed = 0.00052; // ★ プレイヤー最高速度を少し上回る激強スピード
+        laneScale = 0.3;     // ★ インコースをぎりぎりに攻める
       }
 
       for (let i = 0; i < 2; i++) {
@@ -839,6 +839,7 @@
     });
 
     // 描画ループ
+    let lastCalculatedRank = 1;
     function animate() {
       requestAnimationFrame(animate);
 
@@ -846,7 +847,7 @@
         aiCars.forEach(ai => {
           const prevProg = ai.progress;
           ai.progress = (ai.progress + ai.speed) % 1.0;
-          if (ai.progress < prevProg) ai.lap++; // AIのラップ進行
+          if (ai.progress < prevProg) ai.lap++;
 
           const centerPos = curve.getPoint(ai.progress);
           const tangent = curve.getTangent(ai.progress).normalize();
@@ -960,8 +961,6 @@
           myData.hasPassedCP = false; myData.lap++;
           document.getElementById('lap-display').innerText = Math.min(myData.lap, 3);
           document.getElementById('checkpoint-msg').innerText = "NEXT: 中間チェックポイントを目指せ";
-          
-          // ゴール判定
           if (myData.lap > 3) { 
             canControl = false; 
             document.getElementById('goal-banner').style.display = 'block'; 
@@ -975,16 +974,12 @@
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
 
-      // ★ リアルタイム順位計算処理
-      let lastCalculatedRank = 1;
+      // 順位リアルタイム判定
       if (canControl) {
         const competitors = [];
-
-        // プレイヤーデータ
         const playerTotalScore = (myData.lap - 1) + myData.trackProgress;
         competitors.push({ id: 'player', score: playerTotalScore });
 
-        // NPCデータ (シングルプレイ時)
         if (isSinglePlayer) {
           aiCars.forEach((ai, idx) => {
             const aiScore = (ai.lap - 1) + ai.progress;
@@ -992,10 +987,7 @@
           });
         }
 
-        // 降順ソート（スコアが高い方が1位）
         competitors.sort((a, b) => b.score - a.score);
-
-        // 自分の順位特定
         const myRank = competitors.findIndex(c => c.id === 'player') + 1;
         lastCalculatedRank = myRank;
 
@@ -1019,7 +1011,7 @@
         camera.lookAt(lookAtTarget);
       }
 
-      // 他プレイヤーのネームタグ
+      // 他プレイヤーネームタグ
       Object.keys(otherPlayers).forEach(id => {
         if (nametags[id]) {
           const pMesh = otherPlayers[id];
