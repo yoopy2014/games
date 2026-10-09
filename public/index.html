@@ -247,7 +247,7 @@
     <div id="checkpoint-msg">NEXT: 中間チェックポイントを目指せ</div>
     <div id="item-stock">ITEM: なし [Eキーで使用]</div>
     <div id="drift-status">💨 DRIFT CHARGING... [Shift]</div>
-    <div id="offroad-warning">⚠️ 芝生（減速中）</div>
+    <div id="offroad-warning">⚠️ ガードレール衝突中！</div>
     <div id="status-msg">待機中...</div>
     <div id="god-mode" style="color: #ffea00; display: none;">★ GOD MODE ENABLED ★</div>
   </div>
@@ -306,6 +306,56 @@
     const curve = new THREE.CatmullRomCurve3(coursePoints, true);
     const trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 200, 12, 16, true), new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 }));
     trackMesh.scale.y = 0.05; scene.add(trackMesh);
+
+    // ★ ガードレールの生成（内側・外側の両側）
+    const trackRadius = 11.5; // コース幅の限界
+    function createGuardrails() {
+      const railSegments = 300;
+      const railMat = new THREE.MeshStandardMaterial({ color: 0xdd2222, metalness: 0.3, roughness: 0.4 });
+      const postMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8 });
+
+      for (let side = -1; side <= 1; side += 2) {
+        for (let i = 0; i < railSegments; i++) {
+          const t1 = i / railSegments;
+          const t2 = (i + 1) / railSegments;
+
+          const p1 = curve.getPoint(t1);
+          const p2 = curve.getPoint(t2);
+
+          const tan1 = curve.getTangent(t1).normalize();
+          const tan2 = curve.getTangent(t2).normalize();
+
+          const norm1 = new THREE.Vector3(-tan1.z, 0, tan1.x).normalize();
+          const norm2 = new THREE.Vector3(-tan2.z, 0, tan2.x).normalize();
+
+          const pos1 = p1.clone().add(norm1.clone().multiplyScalar(side * trackRadius));
+          const pos2 = p2.clone().add(norm2.clone().multiplyScalar(side * trackRadius));
+          pos1.y *= 0.05; pos2.y *= 0.05;
+
+          // ガードレール壁（プレート）
+          const dist = pos1.distanceTo(pos2);
+          const railGeo = new THREE.BoxGeometry(0.4, 1.2, dist + 0.1);
+          const railMesh = new THREE.Mesh(railGeo, railMat);
+
+          const midPos = pos1.clone().add(pos2).multiplyScalar(0.5);
+          midPos.y += 0.6;
+          railMesh.position.copy(midPos);
+
+          const dir = pos2.clone().sub(pos1);
+          railMesh.rotation.y = Math.atan2(dir.x, dir.z);
+          scene.add(railMesh);
+
+          // ポール支柱
+          if (i % 3 === 0) {
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8), postMat);
+            post.position.copy(pos1);
+            post.position.y += 0.6;
+            scene.add(post);
+          }
+        }
+      }
+    }
+    createGuardrails();
 
     // Trees
     function createTree(x, z) {
@@ -505,7 +555,6 @@
       startCountdownLocal();
     }
 
-    // ★ AIカートの初期化（速度調整 & 横に並べて配置）
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
@@ -517,9 +566,9 @@
         scene.add(aiMesh);
         aiCars.push({ 
           mesh: aiMesh, 
-          progress: 0.01 + i * 0.015, // スタート位置を少しずらす
-          laneOffset: offsets[i],     // レーンの左右オフセット
-          speed: 0.0003 + Math.random() * 0.0001 // ★ 適切なレース速度に修正（速すぎない）
+          progress: 0.01 + i * 0.015,
+          laneOffset: offsets[i],
+          speed: 0.0003 + Math.random() * 0.0001
         });
       }
     }
@@ -641,21 +690,16 @@
     function animate() {
       requestAnimationFrame(animate);
 
-      // ★ AIカートの走行処理（コースの高低差・進行方向・レーン幅を完全に合わせる）
       if (isSinglePlayer && canControl) {
         aiCars.forEach(ai => {
           ai.progress = (ai.progress + ai.speed) % 1.0;
           
-          // コース上の中心点と接線ベクトルを取得
           const centerPos = curve.getPoint(ai.progress);
           const tangent = curve.getTangent(ai.progress).normalize();
-          
-          // レーン幅（法線方向）のオフセット計算
           const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
           
-          // 左右にずらして高さをコース表面（TubeGeometryのスケール0.05考慮）にぴったり接地
           const finalPos = centerPos.clone().add(normal.clone().multiplyScalar(ai.laneOffset));
-          finalPos.y *= 0.05; // 地形高さを合わせる（空中に浮かない）
+          finalPos.y *= 0.05;
 
           ai.mesh.position.copy(finalPos);
           ai.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
@@ -672,22 +716,42 @@
         if (myData.spinTimer > 0) {
           myData.spinTimer--; myData.rotY += 0.3; myData.speed *= 0.8;
         } else {
+          // コース中心からの距離を精密計算（最寄りの点）
           const myPos = new THREE.Vector3(myData.x, 0, myData.z);
           let minDist = 999;
-          for (let i = 0; i <= 100; i++) {
-            const d = myPos.distanceTo(curve.getPoint(i / 100));
-            if (d < minDist) minDist = d;
+          let nearestPoint = null;
+          let nearestNormal = null;
+
+          for (let i = 0; i <= 200; i++) {
+            const pt = curve.getPoint(i / 200);
+            const d = myPos.distanceTo(new THREE.Vector3(pt.x, 0, pt.z));
+            if (d < minDist) {
+              minDist = d;
+              nearestPoint = pt;
+              const tan = curve.getTangent(i / 200);
+              nearestNormal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+            }
           }
 
           let currentMaxSpeed = myData.maxSpeed;
-          if (myData.boostTimer > 0) {
-            myData.boostTimer--; currentMaxSpeed = myData.maxSpeed * 2.2;
-            document.getElementById('offroad-warning').style.display = 'none';
-          } else if (minDist > 14) {
-            currentMaxSpeed = myData.maxSpeed * 0.35;
+
+          // ★ ガードレール壁判定・衝突処理（衝突したら押し返して減速）
+          if (minDist > trackRadius - 0.5) {
             document.getElementById('offroad-warning').style.display = 'block';
+            myData.speed *= 0.6; // 衝突減速
+
+            if (nearestPoint && nearestNormal) {
+              // コースの内側に向かうベクトルを計算して車をコース内へ戻す
+              const toCenter = new THREE.Vector3(nearestPoint.x, 0, nearestPoint.z).sub(myPos).normalize();
+              myData.x += toCenter.x * 0.4;
+              myData.z += toCenter.z * 0.4;
+            }
           } else {
             document.getElementById('offroad-warning').style.display = 'none';
+          }
+
+          if (myData.boostTimer > 0) {
+            myData.boostTimer--; currentMaxSpeed = myData.maxSpeed * 2.2;
           }
 
           if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel * 2, currentMaxSpeed);
