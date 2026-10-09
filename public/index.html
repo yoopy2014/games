@@ -442,20 +442,20 @@
       currentCourseIndex = index;
       curve = new THREE.CatmullRomCurve3(coursePresets[index], true);
 
-      // 古いメッシュ削除
+      // メッシュの削除
       if (trackMesh) scene.remove(trackMesh);
-      while(guardrailGroup.children.length) guardrailGroup.remove(guardrailGroup.children[0]);
-      while(treeGroup.children.length) treeGroup.remove(treeGroup.children[0]);
-      while(finishLineGroup.children.length) finishLineGroup.remove(finishLineGroup.children[0]);
+      while(guardrailGroup.children.length > 0) guardrailGroup.remove(guardrailGroup.children[0]);
+      while(treeGroup.children.length > 0) treeGroup.remove(treeGroup.children[0]);
+      while(finishLineGroup.children.length > 0) finishLineGroup.remove(finishLineGroup.children[0]);
       if (checkpointMesh) scene.remove(checkpointMesh);
 
-      // トラック
+      // トラック生成
       trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 12, 16, true), trackMat);
       trackMesh.scale.y = 0.05;
       trackMesh.receiveShadow = true;
       scene.add(trackMesh);
 
-      // ガードレール
+      // ガードレール生成
       const railSegments = 300;
       const railMat = new THREE.MeshStandardMaterial({ color: 0xee2222, metalness: 0.6, roughness: 0.3 });
       const postMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
@@ -497,7 +497,7 @@
         }
       }
 
-      // 木々
+      // 木々生成
       for (let i = 0; i <= 150; i++) {
         const pt = curve.getPoint(i / 150);
         const tangent = curve.getTangent(i / 150);
@@ -506,28 +506,45 @@
         createTreeMesh(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
       }
 
-      // ゴールライン (コースの起点付近)
-      const startPt = curve.getPoint(0.05);
-      const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
-      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,128); ctx.fillStyle = '#000000'; ctx.fillRect(0,0,64,64); ctx.fillRect(64,64,64,64);
-      const checkerTex = new THREE.CanvasTexture(canvas); checkerTex.wrapS = checkerTex.wrapT = THREE.RepeatWrapping; checkerTex.repeat.set(4, 1);
+      // ★ ゴールゲート・ゴールラインの確実な生成
+      const startPt = curve.getPoint(0.01);
+      const tangent = curve.getTangent(0.01).normalize();
+      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-      const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ map: checkerTex, roughness: 0.4 }));
-      lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.02; finishLineGroup.add(lineMesh);
+      const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
+      lineMesh.rotation.x = -Math.PI / 2;
+      lineMesh.position.y = 0.02;
+      finishLineGroup.add(lineMesh);
+
+      const pillarMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.5, roughness: 0.3 });
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
+      p1.position.set(-normal.x * 12, 5, -normal.z * 12);
+      const p2 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
+      p2.position.set(normal.x * 12, 5, normal.z * 12);
+      finishLineGroup.add(p1);
+      finishLineGroup.add(p2);
+
+      const arch = new THREE.Mesh(new THREE.BoxGeometry(25, 2, 1), pillarMat);
+      arch.position.set(0, 10, 0);
+      finishLineGroup.add(arch);
+
       finishLineGroup.position.copy(startPt);
+      finishLineGroup.rotation.y = Math.atan2(tangent.x, tangent.z);
 
       // 中間チェックポイント (コースの50%地点)
       const midPt = curve.getPoint(0.5);
       checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
-      checkpointMesh.position.copy(midPt); checkpointMesh.position.y += 5;
+      checkpointMesh.position.copy(midPt);
+      checkpointMesh.position.y += 5;
       scene.add(checkpointMesh);
 
-      // アイテムボックス配置 (25%, 50%, 75% 地点)
+      // アイテムボックス配置
       itemBoxes.length = 0;
       [0.25, 0.5, 0.75].forEach(t => {
         const pt = curve.getPoint(t);
         const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xffea00, metalness: 0.9, roughness: 0.1 }));
-        box.position.set(pt.x, 1.5, pt.z); scene.add(box);
+        box.position.set(pt.x, 1.5, pt.z);
+        scene.add(box);
         itemBoxes.push({ mesh: box, active: true, respawnTimer: 0 });
       });
     }
@@ -753,9 +770,12 @@
         localPlayerMesh = createCarMesh('#00ffcc', selectedCarType);
         scene.add(localPlayerMesh);
       }
-      // スタート位置の調整
+      // コースのスタート地点と向きにセット
       const startPt = curve.getPoint(0.01);
-      myData.x = startPt.x; myData.z = startPt.z;
+      const tangent = curve.getTangent(0.01).normalize();
+      myData.x = startPt.x;
+      myData.z = startPt.z;
+      myData.rotY = Math.atan2(tangent.x, tangent.z);
     }
 
     function startSinglePlayer() {
@@ -1031,14 +1051,16 @@
           }
         });
 
+        // ★ 中間チェックポイント通過判定
         const midPt = curve.getPoint(0.5);
         if (Math.hypot(myData.x - midPt.x, myData.z - midPt.z) < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
           document.getElementById('checkpoint-msg').innerText = "OK! ゴールを目指せ！";
         }
 
-        const startPt = curve.getPoint(0.05);
-        if (myData.hasPassedCP && Math.hypot(myData.x - startPt.x, myData.z - startPt.z) < 20) {
+        // ★ ゴール通過判定 (スタート地点周辺)
+        const startPt = curve.getPoint(0.01);
+        if (myData.hasPassedCP && Math.hypot(myData.x - startPt.x, myData.z - startPt.z) < 25) {
           myData.hasPassedCP = false; myData.lap++;
           document.getElementById('lap-display').innerText = Math.min(myData.lap, 3);
           document.getElementById('checkpoint-msg').innerText = "NEXT: 中間チェックポイントを目指せ";
