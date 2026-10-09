@@ -81,6 +81,17 @@
       font-size: 16px;
       text-align: center;
     }
+    .select-field {
+      padding: 8px 12px;
+      margin: 8px 0;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #333;
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
     .car-select-container {
       display: flex;
       justify-content: space-around;
@@ -218,6 +229,16 @@
         <input type="text" id="join-code" class="input-field" placeholder="4桁コード入力" style="width: 120px; text-transform: uppercase;">
         <button class="btn-action" onclick="joinRoom()">部屋に入る</button>
         <hr style="border: 0.5px solid #444; margin: 15px 0;">
+        
+        <!-- ★ NPC難易度選択 UI -->
+        <div style="margin-bottom: 8px;">
+          <label style="font-size: 13px; font-weight: bold; color: #ffea00;">NPC強さ: </label>
+          <select id="ai-difficulty" class="select-field">
+            <option value="easy">ふつう (Easy)</option>
+            <option value="normal" selected>つよい (Normal)</option>
+            <option value="hard">激ムズ (Hard)</option>
+          </select>
+        </div>
         <button class="btn-action" style="background:#555;" onclick="startSinglePlayer()">シングルプレイ（AI対戦）</button>
       </div>
 
@@ -307,8 +328,8 @@
     const trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 200, 12, 16, true), new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 }));
     trackMesh.scale.y = 0.05; scene.add(trackMesh);
 
-    // ★ ガードレールの生成（内側・外側の両側）
-    const trackRadius = 11.5; // コース幅の限界
+    // ガードレール
+    const trackRadius = 11.5;
     function createGuardrails() {
       const railSegments = 300;
       const railMat = new THREE.MeshStandardMaterial({ color: 0xdd2222, metalness: 0.3, roughness: 0.4 });
@@ -332,7 +353,6 @@
           const pos2 = p2.clone().add(norm2.clone().multiplyScalar(side * trackRadius));
           pos1.y *= 0.05; pos2.y *= 0.05;
 
-          // ガードレール壁（プレート）
           const dist = pos1.distanceTo(pos2);
           const railGeo = new THREE.BoxGeometry(0.4, 1.2, dist + 0.1);
           const railMesh = new THREE.Mesh(railGeo, railMat);
@@ -345,7 +365,6 @@
           railMesh.rotation.y = Math.atan2(dir.x, dir.z);
           scene.add(railMesh);
 
-          // ポール支柱
           if (i % 3 === 0) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8), postMat);
             post.position.copy(pos1);
@@ -555,11 +574,28 @@
       startCountdownLocal();
     }
 
+    // ★ 難易度に応じたAIカート生成の設定
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
       const aiColors = ['#ff2222', '#3388ff'];
-      const offsets = [-3, 3];
+      const offsets = [-3.5, 3.5];
+
+      const diff = document.getElementById('ai-difficulty').value;
+      
+      // 難易度別のスピード・インコース調整係数
+      let baseSpeed = 0.00025;
+      let laneScale = 1.0;
+      if (diff === 'easy') {
+        baseSpeed = 0.00020;
+        laneScale = 1.2; // 少し外側に膨らむ
+      } else if (diff === 'normal') {
+        baseSpeed = 0.00030;
+        laneScale = 0.9;
+      } else if (diff === 'hard') {
+        baseSpeed = 0.00042; // かなり速い
+        laneScale = 0.4; // インコースぎりぎりを攻める
+      }
 
       for (let i = 0; i < 2; i++) {
         const aiMesh = createCarMesh(aiColors[i], 'standard');
@@ -567,8 +603,8 @@
         aiCars.push({ 
           mesh: aiMesh, 
           progress: 0.01 + i * 0.015,
-          laneOffset: offsets[i],
-          speed: 0.0003 + Math.random() * 0.0001
+          laneOffset: offsets[i] * laneScale,
+          speed: baseSpeed + Math.random() * 0.00003
         });
       }
     }
@@ -716,7 +752,6 @@
         if (myData.spinTimer > 0) {
           myData.spinTimer--; myData.rotY += 0.3; myData.speed *= 0.8;
         } else {
-          // コース中心からの距離を精密計算（最寄りの点）
           const myPos = new THREE.Vector3(myData.x, 0, myData.z);
           let minDist = 999;
           let nearestPoint = null;
@@ -735,13 +770,12 @@
 
           let currentMaxSpeed = myData.maxSpeed;
 
-          // ★ ガードレール壁判定・衝突処理（衝突したら押し返して減速）
+          // ガードレール壁判定・衝突処理
           if (minDist > trackRadius - 0.5) {
             document.getElementById('offroad-warning').style.display = 'block';
-            myData.speed *= 0.6; // 衝突減速
+            myData.speed *= 0.6;
 
             if (nearestPoint && nearestNormal) {
-              // コースの内側に向かうベクトルを計算して車をコース内へ戻す
               const toCenter = new THREE.Vector3(nearestPoint.x, 0, nearestPoint.z).sub(myPos).normalize();
               myData.x += toCenter.x * 0.4;
               myData.z += toCenter.z * 0.4;
