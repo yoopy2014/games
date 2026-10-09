@@ -278,9 +278,7 @@
     scene.fog = new THREE.FogExp2(0xff7744, 0.003);
 
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // カメラの初期位置をしっかり上空（高さ5、引き15）に設定
     camera.position.set(0, 5, -15);
-    camera.lookAt(0, 1, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -492,16 +490,17 @@
       document.getElementById('item-stock').innerText = "ITEM: なし [Eキーで使用]";
     }
 
-    function startSinglePlayer() {
-      isSinglePlayer = true;
-      document.getElementById('lobby-overlay').style.display = 'none';
-      
-      // シングルプレイヤー自車作成
+    function ensureLocalCarExists() {
       if (!localPlayerMesh) {
         localPlayerMesh = createCarMesh('#00ffcc', selectedCarType);
         scene.add(localPlayerMesh);
       }
+    }
 
+    function startSinglePlayer() {
+      isSinglePlayer = true;
+      document.getElementById('lobby-overlay').style.display = 'none';
+      ensureLocalCarExists();
       setupSinglePlayerAI();
       startCountdownLocal();
     }
@@ -518,6 +517,7 @@
 
     function startCountdownLocal() {
       playBGM();
+      ensureLocalCarExists();
       let count = 3;
       canControl = false; myData.speed = 0;
       document.getElementById('lobby-overlay').style.display = 'none';
@@ -647,6 +647,7 @@
         else if (--b.respawnTimer <= 0) { b.active = true; b.mesh.visible = true; }
       });
 
+      // 操作入力＆位置更新
       if (canControl && localPlayerMesh) {
         if (myData.spinTimer > 0) {
           myData.spinTimer--; myData.rotY += 0.3; myData.speed *= 0.8;
@@ -728,14 +729,20 @@
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
 
-      // ★ カメラ追従処理（localPlayerMesh が存在する場合のみ後方から正しく追従）
+      // ★ カメラ追従処理（自車が存在する場合は常に自車の後方上空から撮影）
       if (localPlayerMesh) {
-        // 車の後方上空のオフセットベクトル
-        const camOffset = new THREE.Vector3(0, 4, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
-        camera.position.copy(localPlayerMesh.position).add(camOffset);
-        // 車の少し前方を見つめる
-        const lookTarget = localPlayerMesh.position.clone().add(new THREE.Vector3(0, 1.2, 10).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY));
-        camera.lookAt(lookTarget);
+        // 車の背後（-Z方向）に14、高さ（+Y方向）に4.5離れたカメラ位置を計算
+        const relativeOffset = new THREE.Vector3(0, 4.5, -14);
+        relativeOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
+        
+        camera.position.copy(localPlayerMesh.position).add(relativeOffset);
+
+        // 車の少し前方（+Z方向に6）を見つめる
+        const targetOffset = new THREE.Vector3(0, 1.2, 6);
+        targetOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
+        const lookAtTarget = localPlayerMesh.position.clone().add(targetOffset);
+
+        camera.lookAt(lookAtTarget);
       }
 
       // 他プレイヤーの頭上ネームタグ判定
