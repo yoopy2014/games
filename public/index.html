@@ -204,18 +204,16 @@
     trackMesh.receiveShadow = true;
     scene.add(trackMesh);
 
-    // --- ★ 木の自動生成（コース沿いに配置してスピード感を演出） ---
+    // 木の自動生成
     function createTree(x, z) {
       const treeGroup = new THREE.Group();
       
-      // 幹（茶色）
       const trunkGeo = new THREE.CylinderGeometry(0.5, 0.8, 3, 6);
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
       trunk.position.y = 1.5;
       treeGroup.add(trunk);
 
-      // 葉（緑のコーン）
       const leavesGeo = new THREE.ConeGeometry(3, 7, 6);
       const leavesMat = new THREE.MeshStandardMaterial({ color: 0x1e6f28, roughness: 0.8 });
       const leaves = new THREE.Mesh(leavesGeo, leavesMat);
@@ -226,14 +224,11 @@
       scene.add(treeGroup);
     }
 
-    // コース曲線に沿って左右に木を配置
     for (let i = 0; i <= 150; i++) {
       const pt = curve.getPoint(i / 150);
       const tangent = curve.getTangent(i / 150);
-      // 法線ベクトル（横方向）を算出
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-      // 道路の左右オフセット（18〜25ほど離した位置）
       const distL = 18 + Math.random() * 8;
       const distR = 18 + Math.random() * 8;
 
@@ -350,7 +345,8 @@
       lap: 1, 
       hasPassedCP: false,
       currentItem: null,
-      spinTimer: 0
+      spinTimer: 0,
+      boostTimer: 0 // ★ ブースト（ダッシュキノコ）残り時間タイマーを追加
     };
     const keys = {};
 
@@ -364,7 +360,9 @@
       if (!myData.currentItem || myData.spinTimer > 0) return;
 
       if (myData.currentItem === 'boost') {
-        myData.speed = myData.maxSpeed * 1.8;
+        // ★ ブーストタイマーを90フレーム（約1.5秒）セット＆即時最高速へ加速
+        myData.boostTimer = 90;
+        myData.speed = myData.maxSpeed * 2.2;
       } else if (myData.currentItem === 'banana') {
         const backX = myData.x - Math.sin(myData.rotY) * 4;
         const backZ = myData.z - Math.cos(myData.rotY) * 4;
@@ -516,16 +514,22 @@
           }
 
           let currentMaxSpeed = myData.maxSpeed;
-          if (minDist > 14) {
+
+          // ★ ブースト中処理（タイマーが残っている間は減速判定を無視して爆速維持）
+          if (myData.boostTimer > 0) {
+            myData.boostTimer--;
+            currentMaxSpeed = myData.maxSpeed * 2.2;
+            document.getElementById('offroad-warning').style.display = 'none';
+          } else if (minDist > 14) {
             currentMaxSpeed = myData.maxSpeed * 0.35;
             document.getElementById('offroad-warning').style.display = 'block';
           } else {
             document.getElementById('offroad-warning').style.display = 'none';
           }
 
-          if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel, currentMaxSpeed);
+          if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel * 2, currentMaxSpeed);
           else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -currentMaxSpeed * 0.4);
-          else myData.speed *= 0.96;
+          else if (myData.boostTimer <= 0) myData.speed *= 0.96;
 
           if (keys['a'] || keys['arrowleft']) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed);
           if (keys['d'] || keys['arrowright']) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed);
