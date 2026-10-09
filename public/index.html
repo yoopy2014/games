@@ -399,27 +399,17 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // ★ 10種類のコースデータ定義
+    // 10種類のコースデータ定義
     const coursePresets = [
-      // 1. クラシック
-      [new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100), new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 5, -50), new THREE.Vector3(80, 0, -220), new THREE.Vector3(-80, -5, -200), new THREE.Vector3(-140, 0, -80), new THREE.Vector3(-80, 0, -40)],
-      // 2. 8の字
+      [new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100), new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 0, -50), new THREE.Vector3(80, 0, -220), new THREE.Vector3(-80, 0, -200), new THREE.Vector3(-140, 0, -80), new THREE.Vector3(-80, 0, -40)],
       [new THREE.Vector3(0, 0, 0), new THREE.Vector3(100, 0, 100), new THREE.Vector3(200, 0, 0), new THREE.Vector3(100, 0, -100), new THREE.Vector3(0, 0, 0), new THREE.Vector3(-100, 0, 100), new THREE.Vector3(-200, 0, 0), new THREE.Vector3(-100, 0, -100)],
-      // 3. 爆速ハイウェイ
       [new THREE.Vector3(0, 0, -50), new THREE.Vector3(0, 0, 250), new THREE.Vector3(60, 0, 280), new THREE.Vector3(120, 0, 250), new THREE.Vector3(120, 0, -50), new THREE.Vector3(60, 0, -80)],
-      // 4. スネークツイスター
       [new THREE.Vector3(0, 0, 0), new THREE.Vector3(80, 0, 60), new THREE.Vector3(-80, 0, 120), new THREE.Vector3(80, 0, 180), new THREE.Vector3(-80, 0, 240), new THREE.Vector3(0, 0, 300), new THREE.Vector3(150, 0, 150), new THREE.Vector3(0, 0, -50)],
-      // 5. ビッグマウンテン
-      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(150, 10, 150), new THREE.Vector3(300, 20, 0), new THREE.Vector3(150, 10, -150), new THREE.Vector3(0, 0, -300), new THREE.Vector3(-150, -10, -150), new THREE.Vector3(-300, -20, 0), new THREE.Vector3(-150, -10, 150)],
-      // 6. スターリング
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(150, 0, 150), new THREE.Vector3(300, 0, 0), new THREE.Vector3(150, 0, -150), new THREE.Vector3(0, 0, -300), new THREE.Vector3(-150, 0, -150), new THREE.Vector3(-300, 0, 0), new THREE.Vector3(-150, 0, 150)],
       [new THREE.Vector3(0, 0, 150), new THREE.Vector3(40, 0, 40), new THREE.Vector3(150, 0, 0), new THREE.Vector3(40, 0, -40), new THREE.Vector3(0, 0, -150), new THREE.Vector3(-40, 0, -40), new THREE.Vector3(-150, 0, 0), new THREE.Vector3(-40, 0, 40)],
-      // 7. ジグザグアリーナ
       [new THREE.Vector3(0, 0, -30), new THREE.Vector3(0, 0, 80), new THREE.Vector3(100, 0, 80), new THREE.Vector3(100, 0, 160), new THREE.Vector3(-100, 0, 160), new THREE.Vector3(-100, 0, -50)],
-      // 8. 首都高スタイル
       [new THREE.Vector3(0, 0, 0), new THREE.Vector3(50, 0, 120), new THREE.Vector3(160, 0, 80), new THREE.Vector3(100, 0, -60), new THREE.Vector3(-40, 0, -120), new THREE.Vector3(-140, 0, -40)],
-      // 9. ダブルループ
       [new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 120), new THREE.Vector3(120, 0, 120), new THREE.Vector3(120, 0, -20), new THREE.Vector3(60, 0, 40), new THREE.Vector3(-60, 0, 40)],
-      // 10. ハイパーコースト
       [new THREE.Vector3(0, 0, -100), new THREE.Vector3(200, 0, -100), new THREE.Vector3(250, 0, 100), new THREE.Vector3(100, 0, 250), new THREE.Vector3(-100, 0, 250), new THREE.Vector3(-250, 0, 100), new THREE.Vector3(-200, 0, -100)]
     ];
 
@@ -438,24 +428,31 @@
 
     const trackMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.5, metalness: 0.2 });
 
+    function clearGroup(grp) {
+      while (grp.children.length > 0) {
+        const obj = grp.children[0];
+        grp.remove(obj);
+      }
+    }
+
     function buildCourse(index) {
       currentCourseIndex = index;
       curve = new THREE.CatmullRomCurve3(coursePresets[index], true);
 
-      // メッシュの削除
+      // 古いメッシュの完全初期化
       if (trackMesh) scene.remove(trackMesh);
-      while(guardrailGroup.children.length > 0) guardrailGroup.remove(guardrailGroup.children[0]);
-      while(treeGroup.children.length > 0) treeGroup.remove(treeGroup.children[0]);
-      while(finishLineGroup.children.length > 0) finishLineGroup.remove(finishLineGroup.children[0]);
+      clearGroup(guardrailGroup);
+      clearGroup(treeGroup);
+      clearGroup(finishLineGroup);
       if (checkpointMesh) scene.remove(checkpointMesh);
 
-      // トラック生成
+      // トラック本体
       trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 12, 16, true), trackMat);
       trackMesh.scale.y = 0.05;
       trackMesh.receiveShadow = true;
       scene.add(trackMesh);
 
-      // ガードレール生成
+      // ガードレール構築 (水平平面上の法線で正確に計算)
       const railSegments = 300;
       const railMat = new THREE.MeshStandardMaterial({ color: 0xee2222, metalness: 0.6, roughness: 0.3 });
       const postMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
@@ -476,13 +473,13 @@
 
           const pos1 = p1.clone().add(norm1.clone().multiplyScalar(side * trackRadius));
           const pos2 = p2.clone().add(norm2.clone().multiplyScalar(side * trackRadius));
-          pos1.y *= 0.05; pos2.y *= 0.05;
+          pos1.y = 0.0; pos2.y = 0.0;
 
           const dist = pos1.distanceTo(pos2);
           const railMesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.2, dist + 0.1), railMat);
 
           const midPos = pos1.clone().add(pos2).multiplyScalar(0.5);
-          midPos.y += 0.6;
+          midPos.y = 0.6;
           railMesh.position.copy(midPos);
 
           const dir = pos2.clone().sub(pos1);
@@ -491,13 +488,13 @@
 
           if (i % 3 === 0) {
             const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1.2, 8), postMat);
-            post.position.copy(pos1); post.position.y += 0.6;
+            post.position.copy(pos1); post.position.y = 0.6;
             guardrailGroup.add(post);
           }
         }
       }
 
-      // 木々生成
+      // 木々の配置
       for (let i = 0; i <= 150; i++) {
         const pt = curve.getPoint(i / 150);
         const tangent = curve.getTangent(i / 150);
@@ -506,39 +503,38 @@
         createTreeMesh(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
       }
 
-      // ★ ゴールゲート・ゴールラインの確実な生成（位置ズレ完全修復版）
+      // ★ ゴールゲート構築（グループローカル座標で正確に左右配置）
       const startPt = curve.getPoint(0.01);
       const tangent = curve.getTangent(0.01).normalize();
 
       // 白いゴールライン
-      const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
+      const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 5), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
       lineMesh.rotation.x = -Math.PI / 2;
       lineMesh.position.y = 0.02;
       finishLineGroup.add(lineMesh);
 
-      // 赤い柱（ローカル座標で左右 X: -12, X: 12 に配置）
+      // 赤い柱（ローカル座標系で左右 X: -12, 12 に直立配置）
       const pillarMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.5, roughness: 0.3 });
-      const p1 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
+      const p1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 10, 1.2), pillarMat);
       p1.position.set(-12, 5, 0);
-      const p2 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
+      const p2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 10, 1.2), pillarMat);
       p2.position.set(12, 5, 0);
       finishLineGroup.add(p1);
       finishLineGroup.add(p2);
 
-      // 上の梁（アーチ）
-      const arch = new THREE.Mesh(new THREE.BoxGeometry(25, 2, 1), pillarMat);
+      // 上のアーチ（横梁）
+      const arch = new THREE.Mesh(new THREE.BoxGeometry(25.2, 2, 1.2), pillarMat);
       arch.position.set(0, 10, 0);
       finishLineGroup.add(arch);
 
-      // 最後にグループ全体をコースのスタート位置＆向きに配置
-      finishLineGroup.position.copy(startPt);
-      finishLineGroup.rotation.y = Math.atan2(tangent.x, tangent.z);
+      // グループ全体をスタート地点へ移動＆向き合わせ
+      finishLineGroup.position.set(startPt.x, 0, startPt.z);
+      finishLineGroup.rotation.set(0, Math.atan2(tangent.x, tangent.z), 0);
 
-      // 中間チェックポイント (コースの50%地点)
+      // 中間チェックポイント (50%地点)
       const midPt = curve.getPoint(0.5);
       checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
-      checkpointMesh.position.copy(midPt);
-      checkpointMesh.position.y += 5;
+      checkpointMesh.position.set(midPt.x, 5, midPt.z);
       scene.add(checkpointMesh);
 
       // アイテムボックス配置
@@ -563,10 +559,13 @@
     }
 
     const itemBoxes = [];
-    buildCourse(0); // 初期コースビルド
+    buildCourse(0);
 
     function changeCourse(idx) {
       buildCourse(parseInt(idx));
+      if (localPlayerMesh) {
+        ensureLocalCarExists();
+      }
     }
 
     const bananas = [];
@@ -590,7 +589,6 @@
       const carbonMat = new THREE.MeshStandardMaterial({ color: 0x111115, metalness: 0.4, roughness: 0.3 });
       const glassMat = new THREE.MeshStandardMaterial({ color: 0x111122, metalness: 0.9, roughness: 0.05, transparent: true, opacity: 0.85 });
       const chromeMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.95, roughness: 0.05 });
-      const brakeMat = new THREE.MeshStandardMaterial({ color: 0xff1111, metalness: 0.5, roughness: 0.2 });
       const tireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 });
 
       let width = 2.2, height = 0.75, length = 4.2;
@@ -648,7 +646,7 @@
       return carGroup;
     }
 
-    // --- ロビー＆パーティー関連処理 ---
+    // ロビー＆操作処理
     let selectedCarType = 'standard';
     let currentRoomCode = null;
     let isHostPlayer = false;
@@ -773,12 +771,13 @@
         localPlayerMesh = createCarMesh('#00ffcc', selectedCarType);
         scene.add(localPlayerMesh);
       }
-      // コースのスタート地点と向きにセット
+      // スタート位置・向きに完璧セット
       const startPt = curve.getPoint(0.01);
       const tangent = curve.getTangent(0.01).normalize();
       myData.x = startPt.x;
       myData.z = startPt.z;
       myData.rotY = Math.atan2(tangent.x, tangent.z);
+      myData.speed = 0;
     }
 
     function startSinglePlayer() {
@@ -829,7 +828,7 @@
       }, 1000);
     }
 
-    // --- Socket.io 受信イベント ---
+    // Socket.io 受信イベント
     socket.on('error_msg', msg => alert(msg));
 
     socket.on('room_joined', data => {
@@ -951,7 +950,7 @@
           const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
           
           const finalPos = centerPos.clone().add(normal.clone().multiplyScalar(ai.laneOffset));
-          finalPos.y *= 0.05;
+          finalPos.y = 0.0;
 
           ai.mesh.position.copy(finalPos);
           ai.mesh.rotation.y = Math.atan2(tangent.x, tangent.z);
@@ -1054,7 +1053,7 @@
           }
         });
 
-        // 中間チェックポイント通過判定
+        // 中間チェックポイント通過判定 (50%地点)
         const midPt = curve.getPoint(0.5);
         if (Math.hypot(myData.x - midPt.x, myData.z - midPt.z) < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
