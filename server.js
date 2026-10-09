@@ -1,20 +1,30 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-app.use(express.static('public'));
+// 静的ファイルの提供 (publicフォルダ内のindex.html, admin.htmlなどを公開)
+app.use(express.static(path.join(__dirname, 'public')));
 
-const ADMIN_PASS = 'admin123';
-// ルーム管理: { roomCode: { hostId: string, players: { socketId: playerObj }, bananas: [] } }
+// 全ルームのデータ保持用オブジェクト
+// 構造: { [roomCode]: { players: { [socketId]: { name, carType, color, isHost, x, y, z, rotY } }, bananas: [] } }
 const rooms = {};
 
-// 4桁のルームコード生成
+// プレイヤーにランダムで割り当てるカラーリスト
+const PLAYER_COLORS = ['#ff2222', '#3388ff', '#00ffcc', '#ffea00', '#ff00ea', '#00ff66'];
+
+// 4桁の英数字ルームコード生成
 function generateRoomCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -23,160 +33,212 @@ function generateRoomCode() {
 }
 
 io.on('connection', (socket) => {
-  let currentRoom = null;
+  console.log(`[接続] クライアント接続: ${socket.id}`);
 
-  // 1. パーティー作成
+  let currentRoomCode = null;
+
+  // --- 1. ルーム作成 ---
   socket.on('create_room', (data) => {
-    const roomCode = generateRoomCode();
-    socket.join(roomCode);
-    currentRoom = roomCode;
+    let roomCode = generateRoomCode();
+    while (rooms[roomCode]) {
+      roomCode = generateRoomCode();
+    }
+
+    const color = PLAYER_COLORS[Math.floor(Math.random() * PLAYER_COLORS.length)];
 
     rooms[roomCode] = {
-      hostId: socket.id,
-      players: {},
+      players: {
+        [socket.id]: {
+          name: data.name || 'ホスト',
+          carType: data.carType || 'standard',
+          color: color,
+          isHost: true,
+          x: 0, y: 0, z: 0, rotY: 0
+        }
+      },
       bananas: []
     };
 
-    rooms[roomCode].players[socket.id] = {
-      id: socket.id,
-      name: data.name || 'ゲスト',
-      carType: data.carType || 'standard',
-      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-      x: 0, y: 0, z: 0, rotY: 0,
-      isHost: true,
-      isGod: false
-    };
-
-    socket.emit('room_joined', { roomCode, isHost: true, players: rooms[roomCode].players });
-  });
-
-  // 2. パーティー参加
-  socket.on('join_room', (data) => {
-    const roomCode = data.roomCode ? data.roomCode.toUpperCase() : '';
-    if (!rooms[roomCode]) {
-      socket.emit('error_msg', '指定されたルームコードが存在しません。');
-      return;
-    }
-
     socket.join(roomCode);
-    currentRoom = roomCode;
+    currentRoomCode = roomCode;
 
-    rooms[roomCode].players[socket.id] = {
-      id: socket.id,
-      name: data.name || 'ゲスト',
-      carType: data.carType || 'standard',
-      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-      x: 0, y: 0, z: 0, rotY: 0,
-      isHost: false,
-      isGod: false
-    };
-
-    socket.emit('room_joined', { roomCode, isHost: false, players: rooms[roomCode].players });
+    socket.emit('room_joined', { roomCode: roomCode, isHost: true });
     io.to(roomCode).emit('update_room_players', rooms[roomCode].players);
     socket.emit('initBananas', rooms[roomCode].bananas);
+
+    // 管理者パネル更新通知
+    io.emit('admin_rooms_data', rooms);
+    console.log(`[部屋作成] Room: ${roomCode} by ${socket.id}`);
   });
 
-  // カート選択変更
+  // --- 2. ルーム参加 ---
+  socket.on('join_room', (data) => {
+    const roomCode = (data.roomCode || '').toUpperCase();
+    if (!rooms[roomCode]) {
+      return socket.emit('error_msg', '指定されたルームが見つかりません。コードを確認してください。');
+    }
+
+    const room = rooms[roomCode];
+    if (Object.keys(room.players).length >= 8) {
+      return socket.emit('error_msg', '部屋が満員です（最大8人）。');
+    }
+
+    const color = PLAYER_COLORS[Object.keys(room.players).length % PLAYER_COLORS.length];
+
+    room.players[socket.id] = {
+      name: data.name || 'レーサー',
+      carType: data.carType || 'standard',
+      color: color,
+      isHost: false,
+      x: 0, y: 0, z: 0, rotY: 0
+    };
+
+    socket.join(roomCode);
+    currentRoomCode = roomCode;
+
+    socket.emit('room_joined', { roomCode: roomCode, isHost: false });
+    io.to(roomCode).emit('update_room_players', room.players);
+    socket.emit('initBananas', room.bananas);
+
+    // 管理者パネル更新通知
+    io.emit('admin_rooms_data', rooms);
+    console.log(`[部屋参加] Room: ${roomCode} - ${socket.id}`);
+  });
+
+  // --- 3. カート変更 ---
   socket.on('selectCar', (carType) => {
-    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].players[socket.id]) {
-      rooms[currentRoom].players[socket.id].carType = carType;
-      io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+    if (currentRoomCode && rooms[currentRoomCode] && rooms[currentRoomCode].players[socket.id]) {
+      rooms[currentRoomCode].players[socket.id].carType = carType;
+      io.to(currentRoomCode).emit('update_room_players', rooms[currentRoomCode].players);
     }
   });
 
-  // プレイヤーの座標同期
+  // --- 4. レーススタート要求（ホストのみ） ---
+  socket.on('request_start_race', () => {
+    if (currentRoomCode && rooms[currentRoomCode]) {
+      const p = rooms[currentRoomCode].players[socket.id];
+      if (p && p.isHost) {
+        io.to(currentRoomCode).emit('startCountdown');
+      }
+    }
+  });
+
+  // --- 5. プレイヤーの位置・回転同期 ---
   socket.on('playerTransform', (data) => {
-    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].players[socket.id]) {
-      const p = rooms[currentRoom].players[socket.id];
-      p.x = data.x; p.y = data.y; p.z = data.z; p.rotY = data.rotY;
-      socket.to(currentRoom).emit('playerMoved', { id: socket.id, ...data });
+    if (currentRoomCode && rooms[currentRoomCode] && rooms[currentRoomCode].players[socket.id]) {
+      const p = rooms[currentRoomCode].players[socket.id];
+      p.x = data.x;
+      p.y = data.y;
+      p.z = data.z;
+      p.rotY = data.rotY;
+
+      socket.to(currentRoomCode).emit('playerMoved', {
+        id: socket.id,
+        x: data.x,
+        y: data.y,
+        z: data.z,
+        rotY: data.rotY
+      });
     }
   });
 
-  // バナナの同期
+  // --- 6. アイテム（バナナ）設置＆削除 ---
   socket.on('spawn_banana', (data) => {
-    if (currentRoom && rooms[currentRoom]) {
-      const bananaData = { id: Date.now() + Math.random(), x: data.x, z: data.z };
-      rooms[currentRoom].bananas.push(bananaData);
-      io.to(currentRoom).emit('banana_spawned', bananaData);
+    if (currentRoomCode && rooms[currentRoomCode]) {
+      const bananaId = 'b_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5);
+      const bananaData = { id: bananaId, x: data.x, z: data.z };
+      rooms[currentRoomCode].bananas.push(bananaData);
+      io.to(currentRoomCode).emit('banana_spawned', bananaData);
     }
   });
 
   socket.on('remove_banana', (bananaId) => {
-    if (currentRoom && rooms[currentRoom]) {
-      const bList = rooms[currentRoom].bananas;
-      const index = bList.findIndex(b => b.id === bananaId);
-      if (index !== -1) {
-        bList.splice(index, 1);
-        io.to(currentRoom).emit('banana_removed', bananaId);
-      }
+    if (currentRoomCode && rooms[currentRoomCode]) {
+      rooms[currentRoomCode].bananas = rooms[currentRoomCode].bananas.filter(b => b.id !== bananaId);
+      io.to(currentRoomCode).emit('banana_removed', bananaId);
     }
   });
 
-  // 3. レーススタート要求
-  socket.on('request_start_race', () => {
-    if (currentRoom && rooms[currentRoom]) {
-      if (rooms[currentRoom].hostId === socket.id) {
-        io.to(currentRoom).emit('startCountdown');
-      }
-    }
-  });
-
-  // 4. キック機能（ホストのみ実行可能）
-  socket.on('kick_player', (targetId) => {
-    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].hostId === socket.id) {
-      if (targetId !== socket.id && rooms[currentRoom].players[targetId]) {
-        const targetSocket = io.sockets.sockets.get(targetId);
+  // --- 7. ホストによるキック機能 ---
+  socket.on('kick_player', (targetSocketId) => {
+    if (currentRoomCode && rooms[currentRoomCode]) {
+      const requester = rooms[currentRoomCode].players[socket.id];
+      if (requester && requester.isHost && socket.id !== targetSocketId) {
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
         if (targetSocket) {
           targetSocket.emit('kicked');
-          targetSocket.leave(currentRoom);
+          targetSocket.leave(currentRoomCode);
         }
-        delete rooms[currentRoom].players[targetId];
-        io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
-        io.to(currentRoom).emit('playerLeft', targetId);
+        delete rooms[currentRoomCode].players[targetSocketId];
+        io.to(currentRoomCode).emit('update_room_players', rooms[currentRoomCode].players);
+        io.to(currentRoomCode).emit('playerLeft', targetSocketId);
+        io.emit('admin_rooms_data', rooms);
       }
     }
   });
 
-  // 管理者コマンド
-  socket.on('admin_start_race', (data) => {
-    if (data.pass === ADMIN_PASS && currentRoom) io.to(currentRoom).emit('startCountdown');
+  // ★★★ 8. 管理者パネル（admin.html）用イベント群 ★★★
+  
+  // 管理者からの部屋一覧データ送信要求
+  socket.on('admin_get_rooms', () => {
+    socket.emit('admin_rooms_data', rooms);
   });
 
-  socket.on('admin_change_env', (data) => {
-    if (data.pass === ADMIN_PASS && currentRoom) io.to(currentRoom).emit('updateEnvironment', { skyType: data.skyType });
-  });
-
-  socket.on('admin_toggle_god', (data) => {
-    if (data.pass === ADMIN_PASS && currentRoom && rooms[currentRoom].players[data.targetId]) {
-      rooms[currentRoom].players[data.targetId].isGod = !rooms[currentRoom].players[data.targetId].isGod;
-      io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+  // 管理者による強制キック
+  socket.on('admin_kick_player', (targetSocketId) => {
+    const targetSocket = io.sockets.sockets.get(targetSocketId);
+    if (targetSocket) {
+      targetSocket.emit('kicked');
+      targetSocket.disconnect(true);
     }
+
+    // 部屋リストから削除
+    Object.keys(rooms).forEach(code => {
+      if (rooms[code].players[targetSocketId]) {
+        delete rooms[code].players[targetSocketId];
+        io.to(code).emit('update_room_players', rooms[code].players);
+        io.to(code).emit('playerLeft', targetSocketId);
+        if (Object.keys(rooms[code].players).length === 0) {
+          delete rooms[code];
+        }
+      }
+    });
+
+    io.emit('admin_rooms_data', rooms);
   });
 
-  // 切断処理
+  // 管理者からの全全体アナウンス送信
+  socket.on('admin_broadcast_msg', (msg) => {
+    io.emit('error_msg', `📢 [管理者メッセージ]: ${msg}`);
+  });
+
+  // --- 9. 切断処理 ---
   socket.on('disconnect', () => {
-    if (currentRoom && rooms[currentRoom]) {
-      delete rooms[currentRoom].players[socket.id];
+    console.log(`[切断] クライアント切断: ${socket.id}`);
+    if (currentRoomCode && rooms[currentRoomCode]) {
+      const room = rooms[currentRoomCode];
+      const isHost = room.players[socket.id]?.isHost;
+      delete room.players[socket.id];
 
-      // ホストが抜けたら新しいホストを割り当て
-      if (rooms[currentRoom].hostId === socket.id) {
-        const remainingIds = Object.keys(rooms[currentRoom].players);
-        if (remainingIds.length > 0) {
-          rooms[currentRoom].hostId = remainingIds[0];
-          rooms[currentRoom].players[remainingIds[0]].isHost = true;
-        } else {
-          delete rooms[currentRoom]; // 部屋が空になったら削除
+      const remainingIds = Object.keys(room.players);
+      if (remainingIds.length === 0) {
+        delete rooms[currentRoomCode];
+      } else {
+        if (isHost) {
+          room.players[remainingIds[0]].isHost = true; // ホスト権限の引き継ぎ
         }
+        io.to(currentRoomCode).emit('update_room_players', room.players);
+        io.to(currentRoomCode).emit('playerLeft', socket.id);
       }
-
-      if (rooms[currentRoom]) {
-        io.to(currentRoom).emit('playerLeft', socket.id);
-        io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
-      }
+      io.emit('admin_rooms_data', rooms);
     }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`=================================`);
+  console.log(`🚀 サーバー起動完了: http://localhost:${PORT}`);
+  console.log(`⚙️ 管理者画面: http://localhost:${PORT}/admin.html`);
+  console.log(`=================================`);
+});
