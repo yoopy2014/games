@@ -506,28 +506,31 @@
         createTreeMesh(pt.x - normal.x * (18 + Math.random() * 8), pt.z - normal.z * (18 + Math.random() * 8));
       }
 
-      // ★ ゴールゲート・ゴールラインの確実な生成
+      // ★ ゴールゲート・ゴールラインの確実な生成（位置ズレ完全修復版）
       const startPt = curve.getPoint(0.01);
       const tangent = curve.getTangent(0.01).normalize();
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
+      // 白いゴールライン
       const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 }));
       lineMesh.rotation.x = -Math.PI / 2;
       lineMesh.position.y = 0.02;
       finishLineGroup.add(lineMesh);
 
+      // 赤い柱（ローカル座標で左右 X: -12, X: 12 に配置）
       const pillarMat = new THREE.MeshStandardMaterial({ color: 0xff0055, metalness: 0.5, roughness: 0.3 });
       const p1 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
-      p1.position.set(-normal.x * 12, 5, -normal.z * 12);
+      p1.position.set(-12, 5, 0);
       const p2 = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 1), pillarMat);
-      p2.position.set(normal.x * 12, 5, normal.z * 12);
+      p2.position.set(12, 5, 0);
       finishLineGroup.add(p1);
       finishLineGroup.add(p2);
 
+      // 上の梁（アーチ）
       const arch = new THREE.Mesh(new THREE.BoxGeometry(25, 2, 1), pillarMat);
       arch.position.set(0, 10, 0);
       finishLineGroup.add(arch);
 
+      // 最後にグループ全体をコースのスタート位置＆向きに配置
       finishLineGroup.position.copy(startPt);
       finishLineGroup.rotation.y = Math.atan2(tangent.x, tangent.z);
 
@@ -1051,14 +1054,14 @@
           }
         });
 
-        // ★ 中間チェックポイント通過判定
+        // 中間チェックポイント通過判定
         const midPt = curve.getPoint(0.5);
         if (Math.hypot(myData.x - midPt.x, myData.z - midPt.z) < 25 && !myData.hasPassedCP) {
           myData.hasPassedCP = true;
           document.getElementById('checkpoint-msg').innerText = "OK! ゴールを目指せ！";
         }
 
-        // ★ ゴール通過判定 (スタート地点周辺)
+        // ゴール通過判定 (スタート地点周辺)
         const startPt = curve.getPoint(0.01);
         if (myData.hasPassedCP && Math.hypot(myData.x - startPt.x, myData.z - startPt.z) < 25) {
           myData.hasPassedCP = false; myData.lap++;
