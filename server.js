@@ -10,21 +10,33 @@ app.use(express.static('public'));
 
 const ADMIN_PASS = 'admin123';
 const players = {};
-const bananas = []; // サーバー側でバナナ（障害物）の位置を管理
+const bananas = [];
+let hostSocketId = null; // パーティーリーダー（最初の接続者）
 
 io.on('connection', (socket) => {
-  // 新規プレイヤー追加
+  // 最初の接続者をホスト（リーダー）に設定
+  if (!hostSocketId) {
+    hostSocketId = socket.id;
+  }
+
   players[socket.id] = {
     x: 0, y: 0, z: 0, rotY: 0,
     color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-    isGod: false
+    carType: 'standard',
+    isGod: false,
+    isHost: socket.id === hostSocketId
   };
 
-  // 現在のプレイヤー一覧とバナナ情報を送信
   io.emit('updatePlayers', players);
   socket.emit('initBananas', bananas);
 
-  // プレイヤーの移動同期
+  socket.on('selectCar', (carType) => {
+    if (players[socket.id]) {
+      players[socket.id].carType = carType;
+      io.emit('updatePlayers', players);
+    }
+  });
+
   socket.on('playerTransform', (data) => {
     if (players[socket.id]) {
       players[socket.id].x = data.x;
@@ -35,25 +47,28 @@ io.on('connection', (socket) => {
     }
   });
 
-  // バナナの設置イベント（誰かがバナナを使った時）
   socket.on('spawn_banana', (data) => {
     const bananaData = { id: Date.now() + Math.random(), x: data.x, z: data.z };
     bananas.push(bananaData);
-    io.emit('banana_spawned', bananaData); // 全員にバナナ設置を通知
+    io.emit('banana_spawned', bananaData);
   });
 
-  // バナナの踏みつけ・消去イベント
   socket.on('remove_banana', (bananaId) => {
     const index = bananas.findIndex(b => b.id === bananaId);
     if (index !== -1) {
       bananas.splice(index, 1);
-      io.emit('banana_removed', bananaId); // 全員からバナナを消去
+      io.emit('banana_removed', bananaId);
     }
   });
 
-  // --- 管理者コマンド ---
-  socket.on('admin_start_race', (data) => {
-    if (data.pass === ADMIN_PASS) io.emit('startCountdown');
+  // レーススタート要求（ホストまたは管理者のみ許可）
+  socket.on('request_start_race', (data) => {
+    const isPassValid = data && data.pass === ADMIN_PASS;
+    const isHost = socket.id === hostSocketId;
+
+    if (isPassValid || isHost) {
+      io.emit('startCountdown');
+    }
   });
 
   socket.on('admin_change_env', (data) => {
@@ -67,9 +82,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 接続切断時
   socket.on('disconnect', () => {
     delete players[socket.id];
+    if (hostSocketId === socket.id) {
+      const remainingIds = Object.keys(players);
+      hostSocketId = remainingIds.length > 0 ? remainingIds[0] : null;
+      if (hostSocketId) players[hostSocketId].isHost = true;
+    }
     io.emit('playerLeft', socket.id);
     io.emit('updatePlayers', players);
   });
