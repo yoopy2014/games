@@ -11,10 +11,10 @@ app.use(express.static('public'));
 const ADMIN_PASS = 'admin123';
 const players = {};
 const bananas = [];
-let hostSocketId = null; // パーティーリーダー（最初の接続者）
+let hostSocketId = null; // パーティーリーダーのID
 
 io.on('connection', (socket) => {
-  // 最初の接続者をホスト（リーダー）に設定
+  // 最初に接続した人をパーティーリーダー（ホスト）にする
   if (!hostSocketId) {
     hostSocketId = socket.id;
   }
@@ -27,9 +27,11 @@ io.on('connection', (socket) => {
     isHost: socket.id === hostSocketId
   };
 
+  // 全員にプレイヤー情報を通知（誰がリーダーかも含む）
   io.emit('updatePlayers', players);
   socket.emit('initBananas', bananas);
 
+  // カート選択の同期
   socket.on('selectCar', (carType) => {
     if (players[socket.id]) {
       players[socket.id].carType = carType;
@@ -37,6 +39,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 座標・回転同期
   socket.on('playerTransform', (data) => {
     if (players[socket.id]) {
       players[socket.id].x = data.x;
@@ -47,12 +50,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // バナナの設置
   socket.on('spawn_banana', (data) => {
     const bananaData = { id: Date.now() + Math.random(), x: data.x, z: data.z };
     bananas.push(bananaData);
     io.emit('banana_spawned', bananaData);
   });
 
+  // バナナの消去
   socket.on('remove_banana', (bananaId) => {
     const index = bananas.findIndex(b => b.id === bananaId);
     if (index !== -1) {
@@ -61,16 +66,17 @@ io.on('connection', (socket) => {
     }
   });
 
-  // レーススタート要求（ホストまたは管理者のみ許可）
+  // ★ レーススタート要求（ホストまたは管理者パスワード保持者のみ発動）
   socket.on('request_start_race', (data) => {
     const isPassValid = data && data.pass === ADMIN_PASS;
     const isHost = socket.id === hostSocketId;
 
     if (isPassValid || isHost) {
-      io.emit('startCountdown');
+      io.emit('startCountdown'); // 全プレイヤーに一斉スタートを指示
     }
   });
 
+  // 管理者コマンド
   socket.on('admin_change_env', (data) => {
     if (data.pass === ADMIN_PASS) io.emit('updateEnvironment', { skyType: data.skyType });
   });
@@ -82,6 +88,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 切断処理（リーダーの移譲）
   socket.on('disconnect', () => {
     delete players[socket.id];
     if (hostSocketId === socket.id) {
