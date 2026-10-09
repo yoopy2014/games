@@ -14,7 +14,7 @@
     }
     #ui-container {
       position: absolute;
-      top: 60px; /* FPS表示と重ならないよう位置を微調整 */
+      top: 45px;
       left: 10px;
       color: #fff;
       font-size: 18px;
@@ -22,6 +22,20 @@
       text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
       pointer-events: none;
       z-index: 10;
+    }
+    #fps-display {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #00ffcc;
+      font-size: 20px;
+      font-weight: bold;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #00ffcc;
+      z-index: 50;
+      pointer-events: none;
     }
     #rank-display { font-size: 42px; color: #ffea00; font-weight: 900; text-shadow: 0 0 10px #ffea00, 2px 2px 4px #000; }
     #speedometer { font-size: 28px; color: #00ffcc; }
@@ -204,11 +218,12 @@
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- ★ Stats.js (FPSカウンターライブラリ) の読み込み -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r17/Stats.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
+
+  <!-- ★ 自作リアルタイムFPSカウンター表示 -->
+  <div id="fps-display">FPS: --</div>
 
   <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
   <a id="admin-link" class="top-btn" href="/admin.html" target="_blank">⚙️ 管理者画面</a>
@@ -325,14 +340,10 @@
       else { bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON"; }
     }
 
-    // ★ Stats.js の初期化 (FPS表示設定)
-    const stats = new Stats();
-    stats.showPanel(0); // 0: fps
-    stats.dom.style.position = 'absolute';
-    stats.dom.style.top = '10px';
-    stats.dom.style.left = '10px';
-    stats.dom.style.zIndex = '50';
-    document.body.appendChild(stats.dom);
+    // ★ 自作FPSカウンターの変数
+    let frameCount = 0;
+    let lastTime = performance.now();
+    const fpsElem = document.getElementById('fps-display');
 
     // 1. Three.js セットアップ
     const scene = new THREE.Scene();
@@ -355,8 +366,8 @@
     const dirLight = new THREE.DirectionalLight(0xffaa55, 1.8);
     dirLight.position.set(120, 180, 80);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.mapSize.width = 1024; // 負荷軽減用に調整
+    dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 600;
     const d = 250;
@@ -874,9 +885,16 @@
     // 描画ループ
     let lastCalculatedRank = 1;
     function animate() {
-      stats.begin(); // ★ Stats.js 計測開始
-
       requestAnimationFrame(animate);
+
+      // ★ 自作FPS計算処理（毎秒更新）
+      frameCount++;
+      const now = performance.now();
+      if (now >= lastTime + 1000) {
+        fpsElem.innerText = `FPS: ${Math.round((frameCount * 1000) / (now - lastTime))}`;
+        frameCount = 0;
+        lastTime = now;
+      }
 
       if (isSinglePlayer && canControl) {
         aiCars.forEach(ai => {
@@ -1079,8 +1097,6 @@
       });
 
       renderer.render(scene, camera);
-
-      stats.end(); // ★ Stats.js 計測完了
     }
 
     animate();
