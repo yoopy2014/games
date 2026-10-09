@@ -23,36 +23,13 @@
       pointer-events: none;
       z-index: 10;
     }
-    #speedometer {
-      font-size: 28px;
-      color: #00ffcc;
-    }
-    #status-msg {
-      font-size: 18px;
-      color: #ffcc00;
-      margin-top: 5px;
-    }
-    #checkpoint-msg {
-      font-size: 16px;
-      color: #00ff66;
-    }
-    #item-stock {
-      font-size: 20px;
-      color: #ff00ea;
-      margin-top: 5px;
-    }
-    #drift-status {
-      font-size: 22px;
-      color: #00ffff;
-      margin-top: 5px;
-      display: none;
-      text-shadow: 0 0 10px #00ffff;
-    }
-    #offroad-warning {
-      color: #ff3333;
-      font-size: 18px;
-      display: none;
-    }
+    #speedometer { font-size: 28px; color: #00ffcc; }
+    #status-msg { font-size: 18px; color: #ffcc00; margin-top: 5px; }
+    #checkpoint-msg { font-size: 16px; color: #00ff66; }
+    #item-stock { font-size: 20px; color: #ff00ea; margin-top: 5px; }
+    #drift-status { font-size: 22px; color: #00ffff; margin-top: 5px; display: none; text-shadow: 0 0 10px #00ffff; }
+    #offroad-warning { color: #ff3333; font-size: 18px; display: none; }
+    
     .top-btn {
       position: absolute;
       top: 10px;
@@ -72,7 +49,7 @@
     #admin-link { right: 10px; }
     #bgm-toggle { right: 160px; }
 
-    /* ロビー・選択UI */
+    /* ロビー UI */
     #lobby-overlay {
       position: absolute;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -93,10 +70,21 @@
       max-width: 500px;
       width: 90%;
     }
+    .input-field {
+      width: 80%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #333;
+      color: #fff;
+      font-size: 16px;
+      text-align: center;
+    }
     .car-select-container {
       display: flex;
       justify-content: space-around;
-      margin: 20px 0;
+      margin: 15px 0;
     }
     .car-card {
       background: #333;
@@ -115,19 +103,42 @@
     .car-card h4 { margin: 5px 0; color: #ffea00; }
     .car-card p { font-size: 11px; color: #ccc; margin: 0; }
     
-    .start-btn {
+    .btn-action {
       background: #ff0055;
       color: #fff;
       border: none;
-      padding: 12px 30px;
-      font-size: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
       font-weight: bold;
       border-radius: 6px;
       cursor: pointer;
-      margin-top: 15px;
+      margin: 5px;
     }
-    .start-btn:hover { background: #ff2277; }
-    .start-btn:disabled { background: #555; cursor: not-allowed; }
+    .btn-action:hover { background: #ff2277; }
+    .btn-secondary { background: #4444ff; }
+    .btn-secondary:hover { background: #6666ff; }
+    .btn-action:disabled { background: #555; cursor: not-allowed; }
+
+    /* メンバーリスト & キック */
+    .player-list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #333;
+      padding: 6px 12px;
+      margin-top: 5px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .btn-kick {
+      background: #ff3333;
+      color: #fff;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
 
     #countdown {
       position: absolute;
@@ -147,6 +158,21 @@
       text-shadow: 0 0 30px #ffea00, 4px 4px 0px #000;
       display: none; text-align: center; z-index: 20;
     }
+
+    /* 3Dネームタグ（頭上表示） */
+    .nametag {
+      position: absolute;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: bold;
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+      transform: translate(-50%, -100%);
+      white-space: nowrap;
+      z-index: 5;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
@@ -156,16 +182,26 @@
   <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
   <a id="admin-link" class="top-btn" href="/admin.html" target="_blank">⚙️ 管理者画面</a>
 
+  <!-- ネームタグ用コンテナ -->
+  <div id="nametag-container"></div>
+
   <!-- ロビー画面 -->
   <div id="lobby-overlay">
     <div class="lobby-box">
       <h2>🚗 3D MULTI-RACING</h2>
       
-      <h3>1. カートを選択</h3>
+      <!-- ステップ1: 名前入力 -->
+      <div>
+        <label style="font-size: 14px; font-weight: bold;">プレイヤー名:</label><br>
+        <input type="text" id="player-name" class="input-field" value="レーサー" maxlength="10">
+      </div>
+
+      <!-- ステップ2: カート選択 -->
+      <h3>カート選択</h3>
       <div class="car-select-container">
         <div class="car-card selected" onclick="selectCar('standard', this)">
           <h4>Standard</h4>
-          <p>標準バランス型</p>
+          <p>標準型</p>
         </div>
         <div class="car-card" onclick="selectCar('speed', this)">
           <h4>Speed</h4>
@@ -173,22 +209,34 @@
         </div>
         <div class="car-card" onclick="selectCar('grip', this)">
           <h4>Grip</h4>
-          <p>旋回・加速重視</p>
+          <p>加速・旋回</p>
         </div>
       </div>
 
-      <h3>2. ゲームモード選択</h3>
-      <div style="margin-bottom: 15px;">
-        <label><input type="radio" name="gameMode" value="multi" checked onchange="updateModeUI()"> マルチプレイ</label>
-        &nbsp;&nbsp;
-        <label><input type="radio" name="gameMode" value="single" onchange="updateModeUI()"> シングル（AI対戦）</label>
+      <!-- ステップ3: モード＆パーティー処理 -->
+      <div id="room-select-area">
+        <button class="btn-action btn-secondary" onclick="createRoom()">パーティーを作成する</button>
+        <div style="margin: 10px 0;">または</div>
+        <input type="text" id="join-code" class="input-field" placeholder="4桁コード入力" style="width: 120px; text-transform: uppercase;">
+        <button class="btn-action" onclick="joinRoom()">部屋に入る</button>
+        <hr style="border: 0.5px solid #444; margin: 15px 0;">
+        <button class="btn-action" style="background:#555;" onclick="startSinglePlayer()">シングルプレイ（AI対戦）</button>
       </div>
 
-      <div id="host-notice" style="font-size: 13px; color: #ffcc00; margin-bottom: 10px;">
-        ※パーティーリーダーのみスタート可能
+      <!-- パーティー待機画面（部屋に入った後表示） -->
+      <div id="room-lobby-area" style="display: none;">
+        <h3>ROOM CODE: <span id="display-room-code" style="color:#00ffcc; font-size:24px;">----</span></h3>
+        <button class="btn-action btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="copyInviteLink()">📋 ルームコードをコピー</button>
+        
+        <div style="text-align: left; margin-top: 15px;">
+          <div style="font-size: 14px; font-weight: bold;">参加メンバー:</div>
+          <div id="member-list" style="max-height: 120px; overflow-y: auto; margin-top: 5px;"></div>
+        </div>
+
+        <div id="host-notice" style="font-size: 13px; color: #ffcc00; margin: 15px 0 5px 0;"></div>
+        <button id="btn-start-race" class="btn-action" style="width: 100%; font-size: 20px;" onclick="requestStartRace()">レーススタート</button>
       </div>
 
-      <button id="btn-start-game" class="start-btn" onclick="startGame()">レーススタート</button>
     </div>
   </div>
 
@@ -224,14 +272,11 @@
 
     function toggleBGM() {
       const btn = document.getElementById('bgm-toggle');
-      if (bgmEnabled) {
-        bgmEnabled = false; bgm.pause(); btn.innerText = "🎵 BGM: OFF";
-      } else {
-        bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON";
-      }
+      if (bgmEnabled) { bgmEnabled = false; bgm.pause(); btn.innerText = "🎵 BGM: OFF"; }
+      else { bgmEnabled = true; bgm.play().catch(() => {}); btn.innerText = "🎵 BGM: ON"; }
     }
 
-    // 1. Scene & Setup
+    // 1. Three.js セットアップ
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0xff7744, 0.003);
 
@@ -242,42 +287,26 @@
     document.body.appendChild(renderer.domElement);
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const dirLight = new THREE.DirectionalLight(0xffaa44, 1.2);
-    dirLight.position.set(100, 150, 50);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffaa44, 1.2); dirLight.position.set(100, 150, 50); scene.add(dirLight);
 
     // Sky & Ground
     const skyGeo = new THREE.SphereGeometry(500, 32, 15);
-    const skyMat = new THREE.MeshBasicMaterial({ color: 0xff5533, side: THREE.BackSide });
-    scene.add(new THREE.Mesh(skyGeo, skyMat));
+    scene.add(new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ color: 0xff5533, side: THREE.BackSide })));
 
-    const groundGeo = new THREE.PlaneGeometry(1000, 1000);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.9 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.5;
-    scene.add(ground);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.9 }));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.5; scene.add(ground);
 
     // Course
     const coursePoints = [
-      new THREE.Vector3(0, 0, -20),
-      new THREE.Vector3(0, 0, 100),
-      new THREE.Vector3(120, 0, 160),
-      new THREE.Vector3(180, 5, -50),
-      new THREE.Vector3(80, 0, -220),
-      new THREE.Vector3(-80, -5, -200),
-      new THREE.Vector3(-140, 0, -80),
-      new THREE.Vector3(-80, 0, -40)
+      new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 100),
+      new THREE.Vector3(120, 0, 160), new THREE.Vector3(180, 5, -50),
+      new THREE.Vector3(80, 0, -220), new THREE.Vector3(-80, -5, -200),
+      new THREE.Vector3(-140, 0, -80), new THREE.Vector3(-80, 0, -40)
     ];
     const curve = new THREE.CatmullRomCurve3(coursePoints, true);
-    const trackGeo = new THREE.TubeGeometry(curve, 200, 12, 16, true);
-    const trackMat = new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 });
-    const trackMesh = new THREE.Mesh(trackGeo, trackMat);
-    trackMesh.scale.y = 0.05;
-    scene.add(trackMesh);
+    const trackMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 200, 12, 16, true), new THREE.MeshStandardMaterial({ color: 0x222225, roughness: 0.8 }));
+    trackMesh.scale.y = 0.05; scene.add(trackMesh);
 
     // Trees
     function createTree(x, z) {
@@ -286,8 +315,7 @@
       trunk.position.y = 1.5; treeGroup.add(trunk);
       const leaves = new THREE.Mesh(new THREE.ConeGeometry(3, 7, 6), new THREE.MeshStandardMaterial({ color: 0x1e6f28 }));
       leaves.position.y = 5.5; treeGroup.add(leaves);
-      treeGroup.position.set(x, 0, z);
-      scene.add(treeGroup);
+      treeGroup.position.set(x, 0, z); scene.add(treeGroup);
     }
 
     for (let i = 0; i <= 150; i++) {
@@ -301,14 +329,9 @@
     // Finish Line
     function createFinishLine() {
       const group = new THREE.Group();
-      const canvas = document.createElement('canvas');
-      canvas.width = 128; canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,128);
-      ctx.fillStyle = '#000000'; ctx.fillRect(0,0,64,64); ctx.fillRect(64,64,64,64);
-      const checkerTex = new THREE.CanvasTexture(canvas);
-      checkerTex.wrapS = checkerTex.wrapT = THREE.RepeatWrapping;
-      checkerTex.repeat.set(4, 1);
+      const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,128); ctx.fillStyle = '#000000'; ctx.fillRect(0,0,64,64); ctx.fillRect(64,64,64,64);
+      const checkerTex = new THREE.CanvasTexture(canvas); checkerTex.wrapS = checkerTex.wrapT = THREE.RepeatWrapping; checkerTex.repeat.set(4, 1);
 
       const lineMesh = new THREE.Mesh(new THREE.PlaneGeometry(24, 6), new THREE.MeshStandardMaterial({ map: checkerTex }));
       lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.02; group.add(lineMesh);
@@ -320,18 +343,15 @@
 
       const arch = new THREE.Mesh(new THREE.BoxGeometry(25, 3, 1), new THREE.MeshStandardMaterial({ map: checkerTex }));
       arch.position.set(0, 10, 0); group.add(arch);
-
-      group.position.set(0, 0, 40);
-      scene.add(group);
+      group.position.set(0, 0, 40); scene.add(group);
     }
     createFinishLine();
 
     // Checkpoint
     const checkpointMesh = new THREE.Mesh(new THREE.TorusGeometry(12, 0.6, 8, 24), new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }));
-    checkpointMesh.position.set(80, 5, -220);
-    scene.add(checkpointMesh);
+    checkpointMesh.position.set(80, 5, -220); scene.add(checkpointMesh);
 
-    // Items
+    // Items & Effects
     const itemBoxes = [];
     [new THREE.Vector3(0, 1.5, 70), new THREE.Vector3(130, 1.5, 60), new THREE.Vector3(0, 1.5, -210), new THREE.Vector3(-120, 1.5, -70)].forEach(pos => {
       const box = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial({ color: 0xffea00, metalness: 0.8 }));
@@ -353,7 +373,7 @@
       smokes.push(smoke);
     }
 
-    // 車両メッシュ
+    // 車両メッシュ生成
     function createCarMesh(colorHex, carType = 'standard') {
       const carGroup = new THREE.Group();
       const bodyMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.5, roughness: 0.2 });
@@ -377,8 +397,11 @@
       return carGroup;
     }
 
-    // カート選択
+    // --- ロビー＆パーティー関連処理 ---
     let selectedCarType = 'standard';
+    let currentRoomCode = null;
+    let isHostPlayer = false;
+
     function selectCar(type, elem) {
       selectedCarType = type;
       document.querySelectorAll('.car-card').forEach(c => c.classList.remove('selected'));
@@ -388,17 +411,43 @@
     }
 
     function applyCarStats(type) {
-      if (type === 'speed') {
-        myData.maxSpeed = 1.0; myData.accel = 0.018; myData.turnSpeed = 0.032;
-      } else if (type === 'grip') {
-        myData.maxSpeed = 0.75; myData.accel = 0.025; myData.turnSpeed = 0.05;
-      } else {
-        myData.maxSpeed = 0.8; myData.accel = 0.02; myData.turnSpeed = 0.04;
+      if (type === 'speed') { myData.maxSpeed = 1.0; myData.accel = 0.018; myData.turnSpeed = 0.032; }
+      else if (type === 'grip') { myData.maxSpeed = 0.75; myData.accel = 0.025; myData.turnSpeed = 0.05; }
+      else { myData.maxSpeed = 0.8; myData.accel = 0.02; myData.turnSpeed = 0.04; }
+    }
+
+    function getNameInput() {
+      return document.getElementById('player-name').value.trim() || 'ゲスト';
+    }
+
+    function createRoom() {
+      socket.emit('create_room', { name: getNameInput(), carType: selectedCarType });
+    }
+
+    function joinRoom() {
+      const code = document.getElementById('join-code').value.trim();
+      if (!code) return alert('ルームコードを入力してください');
+      socket.emit('join_room', { roomCode: code, name: getNameInput(), carType: selectedCarType });
+    }
+
+    function copyInviteLink() {
+      if (currentRoomCode) {
+        navigator.clipboard.writeText(currentRoomCode);
+        alert(`ルームコード [ ${currentRoomCode} ] をコピーしました！`);
       }
     }
 
-    // プレイヤー＆AI状態
+    function kickPlayer(targetId) {
+      socket.emit('kick_player', targetId);
+    }
+
+    function requestStartRace() {
+      socket.emit('request_start_race');
+    }
+
+    // プレイヤー状態
     const otherPlayers = {};
+    const nametags = {};
     let localPlayerMesh = null;
     let canControl = false;
     let isSinglePlayer = false;
@@ -442,46 +491,20 @@
       document.getElementById('item-stock').innerText = "ITEM: なし [Eキーで使用]";
     }
 
-    // UI制御
-    function updateModeUI() {
-      const mode = document.querySelector('input[name="gameMode"]:checked').value;
-      const hostNotice = document.getElementById('host-notice');
-      const startBtn = document.getElementById('btn-start-game');
-
-      if (mode === 'single') {
-        hostNotice.innerText = "※シングルプレイ（いつでも開始可能）";
-        startBtn.disabled = false;
-      } else {
-        const isHost = socket.meData ? socket.meData.isHost : false;
-        startBtn.disabled = !isHost;
-        hostNotice.innerText = isHost ? "あなたがリーダーです（スタート可能）" : "※リーダーのスタート待機中...";
-      }
-    }
-
-    function startGame() {
-      const mode = document.querySelector('input[name="gameMode"]:checked').value;
-      if (mode === 'single') {
-        isSinglePlayer = true;
-        setupSinglePlayerAI();
-        startCountdownLocal();
-      } else {
-        isSinglePlayer = false;
-        socket.emit('request_start_race'); // サーバーにスタートを要求（リーダーのみ許可される）
-      }
+    function startSinglePlayer() {
+      isSinglePlayer = true;
+      document.getElementById('lobby-overlay').style.display = 'none';
+      setupSinglePlayerAI();
+      startCountdownLocal();
     }
 
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
-
       for (let i = 0; i < 2; i++) {
         const aiMesh = createCarMesh('#ff0000', 'standard');
         scene.add(aiMesh);
-        aiCars.push({
-          mesh: aiMesh,
-          progress: 0.05 + i * 0.02,
-          speed: 0.0015 + Math.random() * 0.0005
-        });
+        aiCars.push({ mesh: aiMesh, progress: 0.05 + i * 0.02, speed: 0.0015 + Math.random() * 0.0005 });
       }
     }
 
@@ -489,7 +512,7 @@
       playBGM();
       let count = 3;
       canControl = false; myData.speed = 0;
-      document.getElementById('lobby-overlay').style.display = 'none'; // ロビーを閉じる
+      document.getElementById('lobby-overlay').style.display = 'none';
       const cdElem = document.getElementById('countdown');
       cdElem.style.display = 'block'; cdElem.innerText = count;
 
@@ -501,28 +524,74 @@
       }, 1000);
     }
 
-    // Socket.io
-    socket.on('updatePlayers', (players) => {
+    // --- Socket.io 受信イベント ---
+    socket.on('error_msg', msg => alert(msg));
+
+    socket.on('room_joined', data => {
+      currentRoomCode = data.roomCode;
+      isHostPlayer = data.isHost;
+
+      document.getElementById('room-select-area').style.display = 'none';
+      document.getElementById('room-lobby-area').style.display = 'block';
+      document.getElementById('display-room-code').innerText = data.roomCode;
+    });
+
+    socket.on('update_room_players', players => {
       const me = players[socket.id];
       if (me) {
-        socket.meData = me;
+        isHostPlayer = me.isHost;
         if (!localPlayerMesh) {
           localPlayerMesh = createCarMesh(me.color, me.carType);
           scene.add(localPlayerMesh);
         }
-        updateModeUI(); // 権限UI更新
       }
 
+      // メンバーリスト＆キックボタンの更新
+      const memberContainer = document.getElementById('member-list');
+      memberContainer.innerHTML = '';
+
       Object.keys(players).forEach(id => {
+        const p = players[id];
+        const row = document.createElement('div');
+        row.className = 'player-list-item';
+
+        const isMe = id === socket.id ? ' (自分)' : '';
+        const hostBadge = p.isHost ? ' 👑' : '';
+
+        let kickBtnHTML = '';
+        if (isHostPlayer && id !== socket.id) {
+          kickBtnHTML = `<button class="btn-kick" onclick="kickPlayer('${id}')">キック</button>`;
+        }
+
+        row.innerHTML = `<div><span style="color:${p.color}">■</span> ${p.name}${hostBadge}${isMe}</div>${kickBtnHTML}`;
+        memberContainer.appendChild(row);
+
+        // 他プレイヤーモデル生成
         if (id !== socket.id) {
           if (!otherPlayers[id]) {
-            otherPlayers[id] = createCarMesh(players[id].color, players[id].carType);
+            otherPlayers[id] = createCarMesh(p.color, p.carType);
             scene.add(otherPlayers[id]);
+
+            // ネームタグ DOM
+            const tag = document.createElement('div');
+            tag.className = 'nametag';
+            tag.innerText = p.name;
+            document.getElementById('nametag-container').appendChild(tag);
+            nametags[id] = tag;
           }
-          otherPlayers[id].position.set(players[id].x, players[id].y, players[id].z);
-          otherPlayers[id].rotation.y = players[id].rotY;
         }
       });
+
+      // スタートボタン制御
+      const startBtn = document.getElementById('btn-start-race');
+      const notice = document.getElementById('host-notice');
+      if (isHostPlayer) {
+        startBtn.disabled = false;
+        notice.innerText = "あなたがパーティーリーダーです（スタート可能）";
+      } else {
+        startBtn.disabled = true;
+        notice.innerText = "※リーダーのスタート待機中...";
+      }
     });
 
     socket.on('playerMoved', data => {
@@ -533,7 +602,15 @@
     });
 
     socket.on('playerLeft', id => {
-      if (otherPlayers[id]) { scene.remove(otherPlayers[id]); delete otherPlayers[id]; }
+      if (otherPlayers[id]) {
+        scene.remove(otherPlayers[id]); delete otherPlayers[id];
+        if (nametags[id]) { nametags[id].remove(); delete nametags[id]; }
+      }
+    });
+
+    socket.on('kicked', () => {
+      alert('パーティーリーダーによってキック（追放）されました。');
+      location.reload();
     });
 
     socket.on('banana_spawned', data => spawnBananaMesh(data.id, data.x, data.z));
@@ -543,9 +620,8 @@
     });
     socket.on('initBananas', serverBananas => serverBananas.forEach(b => spawnBananaMesh(b.id, b.x, b.z)));
 
-    // ★ サーバーからスタートの指示が飛んできた時だけカウントダウンが始まる
     socket.on('startCountdown', () => {
-      startCountdownLocal();
+      if (!isSinglePlayer) startCountdownLocal();
     });
 
     // 描画ループ
@@ -647,6 +723,22 @@
         }
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
+
+      // 他プレイヤーの頭上ネームタグ位置計算
+      Object.keys(otherPlayers).forEach(id => {
+        if (nametags[id]) {
+          const pMesh = otherPlayers[id];
+          const tempV = new THREE.Vector3().copy(pMesh.position);
+          tempV.y += 2.5; // 車頭上
+          tempV.project(camera);
+
+          const x = (tempV.x * 0.5 + 0.5) * window.innerWidth;
+          const y = (-(tempV.y * 0.5) + 0.5) * window.innerHeight;
+
+          nametags[id].style.left = `${x}px`;
+          nametags[id].style.top = `${y}px`;
+        }
+      });
 
       smokes.forEach((s, idx) => {
         s.position.y += 0.05; s.material.opacity -= 0.03;
