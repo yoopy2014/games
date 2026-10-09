@@ -1,142 +1,182 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ゲーム管理者ダッシュボード</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #fff;
-      margin: 20px;
-    }
-    h1 { color: #ff0055; text-align: center; }
-    .card {
-      background: #222;
-      border: 1px solid #444;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 20px;
-    }
-    .card h2 { margin-top: 0; color: #00ffcc; border-bottom: 1px solid #444; padding-bottom: 8px; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      border: 1px solid #444;
-      padding: 8px;
-      text-align: left;
-    }
-    th { background: #333; color: #ffea00; }
-    .btn {
-      background: #ff0055;
-      color: #fff;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .btn:hover { background: #ff3377; }
-    .btn-small { padding: 3px 8px; font-size: 12px; }
-    input[type="text"] {
-      padding: 8px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 4px;
-      width: 70%;
-    }
-  </style>
-  <script src="/socket.io/socket.io.js"></script>
-</head>
-<body>
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 
-  <h1>⚙️ レースゲーム 管理者パネル</h1>
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-  <div class="card">
-    <h2>サーバー接続状態</h2>
-    <p>ステータス: <span id="status" style="color:#00ffcc; font-weight:bold;">接続中...</span></p>
-    <button class="btn" onclick="refreshData()">🔄 手動更新</button>
-  </div>
+app.use(express.static('public'));
 
-  <div class="card">
-    <h2>アクティブパーティー部屋一覧</h2>
-    <div id="rooms-container">部屋データを取得中...</div>
-  </div>
+const ADMIN_PASS = 'admin123';
+// ルーム管理: { roomCode: { hostId: string, players: { socketId: playerObj }, bananas: [] } }
+const rooms = {};
 
-  <div class="card">
-    <h2>全体アナウンス送信</h2>
-    <input type="text" id="announce-msg" placeholder="全プレイヤーの画面に通知するメッセージを入力">
-    <button class="btn" onclick="sendBroadcast()">📢 アナウンス送信</button>
-  </div>
+// 4桁のルームコード生成
+function generateRoomCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
 
-  <script>
-    const socket = io();
+io.on('connection', (socket) => {
+  let currentRoom = null;
 
-    socket.on('connect', () => {
-      document.getElementById('status').innerText = '接続済み (ID: ' + socket.id + ')';
-      socket.emit('admin_get_rooms');
-    });
+  // 1. パーティー作成
+  socket.on('create_room', (data) => {
+    const roomCode = generateRoomCode();
+    socket.join(roomCode);
+    currentRoom = roomCode;
 
-    socket.on('disconnect', () => {
-      document.getElementById('status').innerText = '切断されました';
-    });
+    rooms[roomCode] = {
+      hostId: socket.id,
+      players: {},
+      bananas: []
+    };
 
-    socket.on('admin_rooms_data', (rooms) => {
-      const container = document.getElementById('rooms-container');
-      if (!rooms || Object.keys(rooms).length === 0) {
-        container.innerHTML = '<p style="color:#888;">現在アクティブなマルチプレイヤー部屋はありません。</p>';
-        return;
-      }
+    rooms[roomCode].players[socket.id] = {
+      id: socket.id,
+      name: data.name || 'ゲスト',
+      carType: data.carType || 'standard',
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+      x: 0, y: 0, z: 0, rotY: 0,
+      isHost: true,
+      isGod: false
+    };
 
-      let html = '';
-      Object.keys(rooms).forEach(code => {
-        const room = rooms[code];
-        html += `<div style="background:#2a2a2a; padding:10px; margin-bottom:12px; border-radius:6px; border-left:4px solid #ff0055;">`;
-        html += `<h3 style="margin:0 0 8px 0; color:#00ffcc;">ROOM: ${code} <span style="font-size:12px; color:#aaa;">(参加人数: ${Object.keys(room.players).length}名)</span></h3>`;
-        html += `<table><tr><th>Socket ID</th><th>名前</th><th>タイプ</th><th>ホスト</th><th>操作</th></tr>`;
+    socket.emit('room_joined', { roomCode, isHost: true, players: rooms[roomCode].players });
+  });
 
-        Object.keys(room.players).forEach(pId => {
-          const p = room.players[pId];
-          html += `<tr>
-            <td>${pId}</td>
-            <td style="color:${p.color}; font-weight:bold;">${p.name}</td>
-            <td>${p.carType}</td>
-            <td>${p.isHost ? '👑 Lead' : '-'}</td>
-            <td><button class="btn btn-small" onclick="kickPlayer('${pId}')">キック</button></td>
-          </tr>`;
-        });
-
-        html += `</table></div>`;
-      });
-
-      container.innerHTML = html;
-    });
-
-    function refreshData() {
-      socket.emit('admin_get_rooms');
+  // 2. パーティー参加
+  socket.on('join_room', (data) => {
+    const roomCode = data.roomCode ? data.roomCode.toUpperCase() : '';
+    if (!rooms[roomCode]) {
+      socket.emit('error_msg', '指定されたルームコードが存在しません。');
+      return;
     }
 
-    function kickPlayer(targetId) {
-      if (confirm(`プレイヤー [ ${targetId} ] をキックしますか？`)) {
-        socket.emit('admin_kick_player', targetId);
-        setTimeout(refreshData, 500);
+    socket.join(roomCode);
+    currentRoom = roomCode;
+
+    rooms[roomCode].players[socket.id] = {
+      id: socket.id,
+      name: data.name || 'ゲスト',
+      carType: data.carType || 'standard',
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+      x: 0, y: 0, z: 0, rotY: 0,
+      isHost: false,
+      isGod: false
+    };
+
+    socket.emit('room_joined', { roomCode, isHost: false, players: rooms[roomCode].players });
+    io.to(roomCode).emit('update_room_players', rooms[roomCode].players);
+    socket.emit('initBananas', rooms[roomCode].bananas);
+  });
+
+  // カート選択変更
+  socket.on('selectCar', (carType) => {
+    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].players[socket.id]) {
+      rooms[currentRoom].players[socket.id].carType = carType;
+      io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+    }
+  });
+
+  // プレイヤーの座標同期
+  socket.on('playerTransform', (data) => {
+    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].players[socket.id]) {
+      const p = rooms[currentRoom].players[socket.id];
+      p.x = data.x; p.y = data.y; p.z = data.z; p.rotY = data.rotY;
+      socket.to(currentRoom).emit('playerMoved', { id: socket.id, ...data });
+    }
+  });
+
+  // バナナの同期
+  socket.on('spawn_banana', (data) => {
+    if (currentRoom && rooms[currentRoom]) {
+      const bananaData = { id: Date.now() + Math.random(), x: data.x, z: data.z };
+      rooms[currentRoom].bananas.push(bananaData);
+      io.to(currentRoom).emit('banana_spawned', bananaData);
+    }
+  });
+
+  socket.on('remove_banana', (bananaId) => {
+    if (currentRoom && rooms[currentRoom]) {
+      const bList = rooms[currentRoom].bananas;
+      const index = bList.findIndex(b => b.id === bananaId);
+      if (index !== -1) {
+        bList.splice(index, 1);
+        io.to(currentRoom).emit('banana_removed', bananaId);
       }
     }
+  });
 
-    function sendBroadcast() {
-      const msg = document.getElementById('announce-msg').value.trim();
-      if (!msg) return alert('メッセージを入力してください');
-      socket.emit('admin_broadcast_msg', msg);
-      document.getElementById('announce-msg').value = '';
-      alert('アナウンスを送信しました！');
+  // 3. レーススタート要求
+  socket.on('request_start_race', () => {
+    if (currentRoom && rooms[currentRoom]) {
+      if (rooms[currentRoom].hostId === socket.id) {
+        io.to(currentRoom).emit('startCountdown');
+      }
     }
+  });
 
-    setInterval(refreshData, 5000);
-  </script>
-</body>
-</html>
+  // 4. キック機能（ホストのみ実行可能）
+  socket.on('kick_player', (targetId) => {
+    if (currentRoom && rooms[currentRoom] && rooms[currentRoom].hostId === socket.id) {
+      if (targetId !== socket.id && rooms[currentRoom].players[targetId]) {
+        const targetSocket = io.sockets.sockets.get(targetId);
+        if (targetSocket) {
+          targetSocket.emit('kicked');
+          targetSocket.leave(currentRoom);
+        }
+        delete rooms[currentRoom].players[targetId];
+        io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+        io.to(currentRoom).emit('playerLeft', targetId);
+      }
+    }
+  });
+
+  // 管理者コマンド
+  socket.on('admin_start_race', (data) => {
+    if (data.pass === ADMIN_PASS && currentRoom) io.to(currentRoom).emit('startCountdown');
+  });
+
+  socket.on('admin_change_env', (data) => {
+    if (data.pass === ADMIN_PASS && currentRoom) io.to(currentRoom).emit('updateEnvironment', { skyType: data.skyType });
+  });
+
+  socket.on('admin_toggle_god', (data) => {
+    if (data.pass === ADMIN_PASS && currentRoom && rooms[currentRoom].players[data.targetId]) {
+      rooms[currentRoom].players[data.targetId].isGod = !rooms[currentRoom].players[data.targetId].isGod;
+      io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+    }
+  });
+
+  // 切断処理
+  socket.on('disconnect', () => {
+    if (currentRoom && rooms[currentRoom]) {
+      delete rooms[currentRoom].players[socket.id];
+
+      // ホストが抜けたら新しいホストを割り当て
+      if (rooms[currentRoom].hostId === socket.id) {
+        const remainingIds = Object.keys(rooms[currentRoom].players);
+        if (remainingIds.length > 0) {
+          rooms[currentRoom].hostId = remainingIds[0];
+          rooms[currentRoom].players[remainingIds[0]].isHost = true;
+        } else {
+          delete rooms[currentRoom]; // 部屋が空になったら削除
+        }
+      }
+
+      if (rooms[currentRoom]) {
+        io.to(currentRoom).emit('playerLeft', socket.id);
+        io.to(currentRoom).emit('update_room_players', rooms[currentRoom].players);
+      }
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
