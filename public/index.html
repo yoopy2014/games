@@ -69,6 +69,8 @@
       text-align: center;
       max-width: 500px;
       width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
     }
     .input-field {
       width: 80%;
@@ -151,6 +153,14 @@
       font-size: 12px;
     }
 
+    #qrcode-container {
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      display: inline-block;
+      margin: 10px 0;
+    }
+
     #countdown {
       position: absolute;
       top: 50%; left: 50%;
@@ -188,6 +198,7 @@
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -230,7 +241,6 @@
         <button class="btn-action" onclick="joinRoom()">部屋に入る</button>
         <hr style="border: 0.5px solid #444; margin: 15px 0;">
         
-        <!-- ★ NPC難易度選択 UI -->
         <div style="margin-bottom: 8px;">
           <label style="font-size: 13px; font-weight: bold; color: #ffea00;">NPC強さ: </label>
           <select id="ai-difficulty" class="select-field">
@@ -242,9 +252,17 @@
         <button class="btn-action" style="background:#555;" onclick="startSinglePlayer()">シングルプレイ（AI対戦）</button>
       </div>
 
+      <!-- パーティー待機画面 -->
       <div id="room-lobby-area" style="display: none;">
         <h3>ROOM CODE: <span id="display-room-code" style="color:#00ffcc; font-size:24px;">----</span></h3>
-        <button class="btn-action btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="copyInviteLink()">📋 ルームコードをコピー</button>
+        
+        <!-- QRコード表示エリア -->
+        <div>
+          <div style="font-size: 12px; color: #aaa; margin-bottom: 4px;">スマホでカメラから読み取って参加</div>
+          <div id="qrcode-container"></div>
+        </div>
+
+        <button class="btn-action btn-secondary" style="font-size: 12px; padding: 4px 10px;" onclick="copyInviteLink()">📋 招待リンクをコピー</button>
         
         <div style="text-align: left; margin-top: 15px;">
           <div style="font-size: 14px; font-weight: bold;">参加メンバー:</div>
@@ -278,6 +296,15 @@
 
   <script>
     const socket = io();
+
+    // URLパラメータのチェック（QRコード経由での自動入力）
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      if (roomParam) {
+        document.getElementById('join-code').value = roomParam.toUpperCase();
+      }
+    });
 
     // BGM
     const bgm = document.getElementById('bgm');
@@ -498,10 +525,22 @@
       socket.emit('join_room', { roomCode: code, name: getNameInput(), carType: selectedCarType });
     }
 
+    function generateQRCode(roomCode) {
+      const qrContainer = document.getElementById('qrcode-container');
+      qrContainer.innerHTML = '';
+      const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+      new QRCode(qrContainer, {
+        text: joinUrl,
+        width: 128,
+        height: 128
+      });
+    }
+
     function copyInviteLink() {
       if (currentRoomCode) {
-        navigator.clipboard.writeText(currentRoomCode);
-        alert(`ルームコード [ ${currentRoomCode} ] をコピーしました！`);
+        const joinUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomCode}`;
+        navigator.clipboard.writeText(joinUrl);
+        alert(`参加用URLをコピーしました！\n${joinUrl}`);
       }
     }
 
@@ -574,7 +613,6 @@
       startCountdownLocal();
     }
 
-    // ★ 難易度に応じたAIカート生成の設定
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
@@ -583,18 +621,17 @@
 
       const diff = document.getElementById('ai-difficulty').value;
       
-      // 難易度別のスピード・インコース調整係数
       let baseSpeed = 0.00025;
       let laneScale = 1.0;
       if (diff === 'easy') {
         baseSpeed = 0.00020;
-        laneScale = 1.2; // 少し外側に膨らむ
+        laneScale = 1.2;
       } else if (diff === 'normal') {
         baseSpeed = 0.00030;
         laneScale = 0.9;
       } else if (diff === 'hard') {
-        baseSpeed = 0.00042; // かなり速い
-        laneScale = 0.4; // インコースぎりぎりを攻める
+        baseSpeed = 0.00042;
+        laneScale = 0.4;
       }
 
       for (let i = 0; i < 2; i++) {
@@ -636,6 +673,9 @@
       document.getElementById('room-select-area').style.display = 'none';
       document.getElementById('room-lobby-area').style.display = 'block';
       document.getElementById('display-room-code').innerText = data.roomCode;
+
+      // ★ QRコード生成
+      generateQRCode(data.roomCode);
     });
 
     socket.on('update_room_players', players => {
