@@ -41,6 +41,13 @@
       color: #ff00ea;
       margin-top: 5px;
     }
+    #drift-status {
+      font-size: 22px;
+      color: #00ffff;
+      margin-top: 5px;
+      display: none;
+      text-shadow: 0 0 10px #00ffff;
+    }
     #offroad-warning {
       color: #ff3333;
       font-size: 18px;
@@ -112,7 +119,8 @@
     <div>LAP: <span id="lap-display">1</span> / 3</div>
     <div id="speedometer">0 km/h</div>
     <div id="checkpoint-msg">NEXT: 中間チェックポイントを目指せ</div>
-    <div id="item-stock">ITEM: なし [Spaceで使用]</div>
+    <div id="item-stock">ITEM: なし [Eキーで使用]</div>
+    <div id="drift-status">💨 DRIFT CHARGING... [Shift]</div>
     <div id="offroad-warning">⚠️ 芝生（減速中）</div>
     <div id="status-msg">管理者のスタート待機中...</div>
     <div id="god-mode" style="color: #ffea00; display: none;">★ GOD MODE ENABLED ★</div>
@@ -310,6 +318,17 @@
       bananas.push({ id: id, mesh: banana });
     }
 
+    // 煙パーティクル（ドリフト演出）
+    const smokes = [];
+    function createSmoke(x, z) {
+      const sGeo = new THREE.SphereGeometry(0.5, 6, 6);
+      const sMat = new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.6 });
+      const smoke = new THREE.Mesh(sGeo, sMat);
+      smoke.position.set(x, 0.3, z);
+      scene.add(smoke);
+      smokes.push(smoke);
+    }
+
     // 車両メッシュ
     function createCarMesh(colorHex) {
       const carGroup = new THREE.Group();
@@ -346,21 +365,39 @@
       hasPassedCP: false,
       currentItem: null,
       spinTimer: 0,
-      boostTimer: 0 // ★ ブースト（ダッシュキノコ）残り時間タイマーを追加
+      boostTimer: 0,
+      // ★ ドリフト用変数
+      isDrifting: false,
+      driftCharge: 0,
+      driftDir: 0 // 1: 右ドリフト, -1: 左ドリフト
     };
     const keys = {};
 
     window.addEventListener('keydown', (e) => {
       keys[e.key.toLowerCase()] = true;
-      if (e.code === 'Space') useItem();
+      if (e.key.toLowerCase() === 'e') useItem();
     });
-    window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+    
+    window.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
+
+      // ★ Shiftキー（ドリフト）を離したときにミニターボ発動！
+      if (e.key === 'Shift' && myData.isDrifting) {
+        if (myData.driftCharge > 20) {
+          // ミニターボ発動（チャージ量に応じてブースト時間アップ）
+          myData.boostTimer = Math.min(30 + myData.driftCharge * 1.5, 90);
+          myData.speed = myData.maxSpeed * 2.0;
+        }
+        myData.isDrifting = false;
+        myData.driftCharge = 0;
+        document.getElementById('drift-status').style.display = 'none';
+      }
+    });
 
     function useItem() {
       if (!myData.currentItem || myData.spinTimer > 0) return;
 
       if (myData.currentItem === 'boost') {
-        // ★ ブーストタイマーを90フレーム（約1.5秒）セット＆即時最高速へ加速
         myData.boostTimer = 90;
         myData.speed = myData.maxSpeed * 2.2;
       } else if (myData.currentItem === 'banana') {
@@ -370,7 +407,7 @@
       }
 
       myData.currentItem = null;
-      document.getElementById('item-stock').innerText = "ITEM: なし [Spaceで使用]";
+      document.getElementById('item-stock').innerText = "ITEM: なし [Eキーで使用]";
     }
 
     // 花火エフェクト
@@ -515,7 +552,7 @@
 
           let currentMaxSpeed = myData.maxSpeed;
 
-          // ★ ブースト中処理（タイマーが残っている間は減速判定を無視して爆速維持）
+          // ブースト時
           if (myData.boostTimer > 0) {
             myData.boostTimer--;
             currentMaxSpeed = myData.maxSpeed * 2.2;
@@ -527,19 +564,37 @@
             document.getElementById('offroad-warning').style.display = 'none';
           }
 
+          // アクセル・ブレーキ
           if (keys['w'] || keys['arrowup']) myData.speed = Math.min(myData.speed + myData.accel * 2, currentMaxSpeed);
           else if (keys['s'] || keys['arrowdown']) myData.speed = Math.max(myData.speed - myData.accel, -currentMaxSpeed * 0.4);
           else if (myData.boostTimer <= 0) myData.speed *= 0.96;
 
-          if (keys['a'] || keys['arrowleft']) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed);
-          if (keys['d'] || keys['arrowright']) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed);
+          // ★ ドリフト＆ステアリング判定
+          const isSteeringLeft = keys['a'] || keys['arrowleft'];
+          const isSteeringRight = keys['d'] || keys['arrowright'];
+
+          if (keys['shift'] && (isSteeringLeft || isSteeringRight) && Math.abs(myData.speed) > 0.3) {
+            myData.isDrifting = true;
+            myData.driftDir = isSteeringLeft ? 1 : -1;
+            myData.driftCharge++;
+
+            document.getElementById('drift-status').style.display = 'block';
+            createSmoke(myData.x, myData.z); // ドリフトの白煙生成
+          }
+
+          // ハンドル切れ角（ドリフト中は曲がりやすくなる）
+          const turnMultiplier = myData.isDrifting ? 1.6 : 1.0;
+          if (isSteeringLeft) myData.rotY += 0.04 * (myData.speed / myData.maxSpeed) * turnMultiplier;
+          if (isSteeringRight) myData.rotY -= 0.04 * (myData.speed / myData.maxSpeed) * turnMultiplier;
         }
 
+        // 位置の更新
         myData.x += Math.sin(myData.rotY) * myData.speed;
         myData.z += Math.cos(myData.rotY) * myData.speed;
 
         localPlayerMesh.position.set(myData.x, myData.y, myData.z);
-        localPlayerMesh.rotation.y = myData.rotY;
+        // ドリフト中は車体を少し斜めに傾ける（ドリフト演出）
+        localPlayerMesh.rotation.y = myData.rotY + (myData.isDrifting ? myData.driftDir * 0.3 : 0);
 
         // アイテム取得
         itemBoxes.forEach(b => {
@@ -552,7 +607,7 @@
               const items = ['boost', 'banana'];
               myData.currentItem = items[Math.floor(Math.random() * items.length)];
               const name = myData.currentItem === 'boost' ? '🚀 ダッシュキノコ' : '🍌 バナナ罠';
-              document.getElementById('item-stock').innerText = `ITEM: ${name} [Spaceで使用]`;
+              document.getElementById('item-stock').innerText = `ITEM: ${name} [Eキーで使用]`;
             }
           }
         });
@@ -589,6 +644,16 @@
         socket.emit('playerTransform', { x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY });
         document.getElementById('speedometer').innerText = `${Math.round(Math.abs(myData.speed) * 180)} km/h`;
       }
+
+      // 煙パーティクルの消失処理
+      smokes.forEach((s, idx) => {
+        s.position.y += 0.05;
+        s.material.opacity -= 0.03;
+        if (s.material.opacity <= 0) {
+          scene.remove(s);
+          smokes.splice(idx, 1);
+        }
+      });
 
       if (localPlayerMesh) {
         const camOffset = new THREE.Vector3(0, 4, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), myData.rotY);
