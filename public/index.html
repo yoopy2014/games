@@ -156,7 +156,7 @@
   <button id="bgm-toggle" class="top-btn" onclick="toggleBGM()">🎵 BGM: ON</button>
   <a id="admin-link" class="top-btn" href="/admin.html" target="_blank">⚙️ 管理者画面</a>
 
-  <!-- ロビー画面（カート選択 & モード選択） -->
+  <!-- ロビー画面 -->
   <div id="lobby-overlay">
     <div class="lobby-box">
       <h2>🚗 3D MULTI-RACING</h2>
@@ -185,7 +185,7 @@
       </div>
 
       <div id="host-notice" style="font-size: 13px; color: #ffcc00; margin-bottom: 10px;">
-        ※マルチプレイはパーティーリーダーのみスタート可能
+        ※パーティーリーダーのみスタート可能
       </div>
 
       <button id="btn-start-game" class="start-btn" onclick="startGame()">レーススタート</button>
@@ -353,14 +353,14 @@
       smokes.push(smoke);
     }
 
-    // --- 車両メッシュ生成（タイプ別の見た目補正） ---
+    // 車両メッシュ
     function createCarMesh(colorHex, carType = 'standard') {
       const carGroup = new THREE.Group();
       const bodyMat = new THREE.MeshStandardMaterial({ color: parseInt(colorHex.replace('#', '0x')), metalness: 0.5, roughness: 0.2 });
 
       let width = 2, height = 0.8, length = 4;
-      if (carType === 'speed') { length = 4.8; height = 0.6; } // ロング＆ロー
-      else if (carType === 'grip') { width = 2.4; length = 3.6; } // ワイド
+      if (carType === 'speed') { length = 4.8; height = 0.6; }
+      else if (carType === 'grip') { width = 2.4; length = 3.6; }
 
       const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, length), bodyMat);
       body.position.y = height / 2; carGroup.add(body);
@@ -377,7 +377,7 @@
       return carGroup;
     }
 
-    // カート選択処理
+    // カート選択
     let selectedCarType = 'standard';
     function selectCar(type, elem) {
       selectedCarType = type;
@@ -446,10 +446,15 @@
     function updateModeUI() {
       const mode = document.querySelector('input[name="gameMode"]:checked').value;
       const hostNotice = document.getElementById('host-notice');
+      const startBtn = document.getElementById('btn-start-game');
+
       if (mode === 'single') {
         hostNotice.innerText = "※シングルプレイ（いつでも開始可能）";
+        startBtn.disabled = false;
       } else {
-        hostNotice.innerText = "※マルチプレイはパーティーリーダーのみスタート可能";
+        const isHost = socket.meData ? socket.meData.isHost : false;
+        startBtn.disabled = !isHost;
+        hostNotice.innerText = isHost ? "あなたがリーダーです（スタート可能）" : "※リーダーのスタート待機中...";
       }
     }
 
@@ -457,16 +462,14 @@
       const mode = document.querySelector('input[name="gameMode"]:checked').value;
       if (mode === 'single') {
         isSinglePlayer = true;
-        document.getElementById('lobby-overlay').style.display = 'none';
         setupSinglePlayerAI();
         startCountdownLocal();
       } else {
         isSinglePlayer = false;
-        socket.emit('request_start_race');
+        socket.emit('request_start_race'); // サーバーにスタートを要求（リーダーのみ許可される）
       }
     }
 
-    // シングルプレイAI生成
     function setupSinglePlayerAI() {
       aiCars.forEach(ai => scene.remove(ai.mesh));
       aiCars = [];
@@ -486,7 +489,7 @@
       playBGM();
       let count = 3;
       canControl = false; myData.speed = 0;
-      document.getElementById('lobby-overlay').style.display = 'none';
+      document.getElementById('lobby-overlay').style.display = 'none'; // ロビーを閉じる
       const cdElem = document.getElementById('countdown');
       cdElem.style.display = 'block'; cdElem.innerText = count;
 
@@ -502,16 +505,12 @@
     socket.on('updatePlayers', (players) => {
       const me = players[socket.id];
       if (me) {
+        socket.meData = me;
         if (!localPlayerMesh) {
           localPlayerMesh = createCarMesh(me.color, me.carType);
           scene.add(localPlayerMesh);
         }
-        const startBtn = document.getElementById('btn-start-game');
-        const mode = document.querySelector('input[name="gameMode"]:checked').value;
-        if (mode === 'multi') {
-          startBtn.disabled = !me.isHost;
-          document.getElementById('status-msg').innerText = me.isHost ? "あなたがパーティーリーダーです" : "リーダーのスタート待機中...";
-        }
+        updateModeUI(); // 権限UI更新
       }
 
       Object.keys(players).forEach(id => {
@@ -544,15 +543,15 @@
     });
     socket.on('initBananas', serverBananas => serverBananas.forEach(b => spawnBananaMesh(b.id, b.x, b.z)));
 
+    // ★ サーバーからスタートの指示が飛んできた時だけカウントダウンが始まる
     socket.on('startCountdown', () => {
-      if (!isSinglePlayer) startCountdownLocal();
+      startCountdownLocal();
     });
 
     // 描画ループ
     function animate() {
       requestAnimationFrame(animate);
 
-      // AIボットの移動（シングルプレイ時）
       if (isSinglePlayer && canControl) {
         aiCars.forEach(ai => {
           ai.progress = (ai.progress + ai.speed) % 1.0;
